@@ -54,4 +54,4 @@ Only inward dependencies are allowed (outer layers depend on inner abstractions,
 - Dependencies are registered via DI in the composition root.
 - Tests are added/updated first (or alongside) and pass.
 - Security checks are considered and relevant tests are present.
-- Documentation is updated when architecture or behavior changes.
+- markdown and website documentation is updated when architecture or behaviour changes.
