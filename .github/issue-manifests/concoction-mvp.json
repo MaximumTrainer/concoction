@@ -1,0 +1,37 @@
+[
+  {
+    "title": "[MVP] Bootstrap Hexagonal architecture and DI composition root",
+    "labels": ["mvp", "architecture"],
+    "body": "## User Story\nAs a Concoction maintainer, I want a clean Hexagonal architecture with DI so that adapters and core logic evolve independently.\n\n## Acceptance Criteria\n- Solution contains Domain/Application/Infrastructure/Cli projects\n- Composition root resolves orchestrator service\n- Domain/Application do not reference Infrastructure"
+  },
+  {
+    "title": "[MVP] Implement schema discovery canonical model",
+    "labels": ["mvp", "schema"],
+    "body": "## User Story\nAs a data engineer, I want canonical schema metadata discovery so that generation respects table structure.\n\n## Acceptance Criteria\n- DatabaseSchema/TableSchema/ColumnSchema models finalized\n- ISchemaProvider async discovery with cancellation\n- SQL type mapping reports unsupported kinds"
+  },
+  {
+    "title": "[MVP] Add PostgreSQL and SQLite providers",
+    "labels": ["mvp", "connectors"],
+    "body": "## User Story\nAs an engineer, I want PostgreSQL and SQLite adapters so Concoction works in common dev and CI environments.\n\n## Acceptance Criteria\n- PostgreSQL and SQLite providers implemented\n- Canonical metadata parity for fixture schema\n- Integration tests cover both providers"
+  },
+  {
+    "title": "[MVP] Build generator registry and deterministic randomness",
+    "labels": ["mvp", "generation"],
+    "body": "## User Story\nAs a tester, I want deterministic seeded generators so datasets are reproducible.\n\n## Acceptance Criteria\n- Typed generator dispatch abstraction exists\n- Registry supports strategy-based lookups\n- Same seed produces stable output"
+  },
+  {
+    "title": "[MVP] Implement constraints, dependency planning, and referential materialization",
+    "labels": ["mvp", "integrity"],
+    "body": "## User Story\nAs a QA engineer, I want constraints and referential integrity preserved so test failures reflect real defects.\n\n## Acceptance Criteria\n- Nullability/uniqueness/range/enum checks implemented\n- Topological plan with cycle diagnostics\n- FK values map to existing parent keys"
+  },
+  {
+    "title": "[MVP] Add rules DSL, CLI commands, and exporters",
+    "labels": ["mvp", "cli"],
+    "body": "## User Story\nAs a developer, I want CLI-driven generation with config overrides and export formats so Concoction fits CI/local workflows.\n\n## Acceptance Criteria\n- JSON/YAML rule config with validation and precedence merge\n- discover/generate/validate/export commands available\n- CSV/JSON outputs and summary report generated"
+  },
+  {
+    "title": "[MVP] Add sensitive field policies and issue bootstrap workflow",
+    "labels": ["mvp", "compliance", "automation"],
+    "body": "## User Story\nAs a compliance-focused maintainer, I want default-safe sensitive policies and automated issue creation from manifest.\n\n## Acceptance Criteria\n- Sensitive field classifier assigns safe default strategy\n- Compliance decisions emitted in run metadata\n- GitHub Action creates/updates manifest issues idempotently"
+  }
+]

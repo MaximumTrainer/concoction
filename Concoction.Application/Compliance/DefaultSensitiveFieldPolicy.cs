@@ -1,0 +1,30 @@
+using Concoction.Application.Abstractions;
+using Concoction.Domain.Enums;
+using Concoction.Domain.Models;
+
+namespace Concoction.Application.Compliance;
+
+public sealed class DefaultSensitiveFieldPolicy : ISensitiveFieldPolicy
+{
+    private static readonly (string Pattern, string Classification, SensitiveFieldStrategy Strategy)[] PatternRules =
+    [
+        ("email", "PII.Email", SensitiveFieldStrategy.Pseudonymize),
+        ("phone", "PII.Phone", SensitiveFieldStrategy.Tokenize),
+        ("ssn", "PII.SSN", SensitiveFieldStrategy.Redact),
+        ("mrn", "PHI.MRN", SensitiveFieldStrategy.Redact),
+        ("dob", "PHI.DOB", SensitiveFieldStrategy.Synthesize)
+    ];
+
+    public ComplianceDecision Evaluate(string table, ColumnSchema column)
+    {
+        foreach (var rule in PatternRules)
+        {
+            if (column.Name.Contains(rule.Pattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ComplianceDecision(table, column.Name, rule.Strategy, rule.Classification, $"Matched pattern '{rule.Pattern}'.");
+            }
+        }
+
+        return new ComplianceDecision(table, column.Name, SensitiveFieldStrategy.None, "None", "No sensitive pattern matched.");
+    }
+}

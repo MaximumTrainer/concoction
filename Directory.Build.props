@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>
