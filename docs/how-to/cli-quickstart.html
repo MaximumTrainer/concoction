@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CLI Quick Start — Concoction</title>
+<style></style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="nav-brand">&#9879; Concoction</a>
+  <ul class="nav-links">
+    <li><a href="../user-guide.html">User Guide</a></li>
+    <li><a href="cli-quickstart.html">CLI</a></li>
+    <li><a href="rules-dsl.html">Rules DSL</a></li>
+    <li><a href="compliance-profiles.html">Compliance</a></li>
+    <li><a href="rest-api.html">API</a></li>
+    <li><a href="typescript-sdk.html">TypeScript SDK</a></li>
+    <li><a href="https://github.com/MaximumTrainer/concoction">GitHub</a></li>
+  </ul>
+</nav>
+<div class="page">
+<h1>CLI Quick Start</h1>
+<p>Step-by-step guide to generating synthetic data for a SQLite database using all five CLI commands.</p>
+
+<h2 id="prereqs">Prerequisites</h2>
+<ul>
+  <li>.NET 10 SDK installed</li>
+  <li>Repository cloned and built: <code>dotnet build Concoction.slnx</code></li>
+  <li><code>sqlite3</code> CLI (or any SQLite client)</li>
+</ul>
+
+<h2 id="step1">Step 1: Create a Sample SQLite Database</h2>
+<pre><code>sqlite3 sample.db &lt;&lt;'SQL'
+CREATE TABLE departments (
+  id    INTEGER PRIMARY KEY AUTOINCREMENT,
+  name  TEXT NOT NULL
+);
+CREATE TABLE employees (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  department_id INTEGER NOT NULL REFERENCES departments(id),
+  email         TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL,
+  manager_id    INTEGER REFERENCES employees(id),
+  status        TEXT NOT NULL DEFAULT 'active'
+);
+CREATE TABLE orders (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL REFERENCES employees(id),
+  amount      DECIMAL(10,2) NOT NULL,
+  created_at  DATETIME NOT NULL
+);
+SQL</code></pre>
+
+<h2 id="step2">Step 2: Discover the Schema</h2>
+<pre><code>dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- discover \
+  --provider sqlite \
+  --connection "Data Source=./sample.db" \
+  --database sample \
+  --seed 42</code></pre>
+<p>Outputs JSON listing all tables with columns, PKs, FKs, and constraints.</p>
+
+<h2 id="step3">Step 3: Profile the Schema</h2>
+<p><code>discover-profile</code> surfaces diagnostics: self-referencing FKs, cycles, and unmapped types.</p>
+<pre><code>dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- discover-profile \
+  --provider sqlite \
+  --connection "Data Source=./sample.db"</code></pre>
+<p>Exit code 1 if diagnostics found. Expect a diagnostic noting <code>employees.manager_id</code> is a self-referencing FK.</p>
+
+<h2 id="step4">Step 4: Create a Rules File</h2>
+<p>Create <code>rules.yaml</code> in the project root:</p>
+<pre><code>version: "1"
+tables:
+  - table: "main.employees"
+    columns:
+      - column: "email"
+        strategy: "Email"
+      - column: "name"
+        strategy: "Name"
+      - column: "status"
+        fixedValue: "active"
+  - table: "main.orders"
+    columns:
+      - column: "amount"
+        distribution:
+          "9.99":  0.4
+          "49.99": 0.35
+          "99.99": 0.25</code></pre>
+
+<h2 id="step5">Step 5: Generate Data</h2>
+<pre><code>dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- generate \
+  --provider sqlite \
+  --connection "Data Source=./sample.db" \
+  --database sample \
+  --seed 42 \
+  --rows 20 \
+  --rules ./rules.yaml \
+  --compliance-profile Default \
+  --output ./artifacts</code></pre>
+<p>On success: <code>Generated 60 rows across 3 tables.</code></p>
+<h3>Output Directory</h3>
+<pre><code>artifacts/
+  csv/
+    main.departments.csv
+    main.employees.csv
+    main.orders.csv
+  json/
+    main.departments.json
+    main.employees.json
+    main.orders.json
+  sql/
+    main.departments.sql
+    main.employees.sql
+    main.orders.sql
+  summary.json</code></pre>
+<h3>Sample CSV Output</h3>
+<pre><code>id,department_id,email,name,manager_id,status
+1,3,alice@example.com,Alice Johnson,,active
+2,1,bob@example.com,Bob Smith,1,active</code></pre>
+<p>Note: <code>manager_id</code> for row 0 (Alice) is empty — the self-referencing FK root gets <code>null</code>.</p>
+<h3>summary.json</h3>
+<pre><code>{
+  "startedAt": "2024-06-01T10:00:00Z",
+  "completedAt": "2024-06-01T10:00:01Z",
+  "tableCount": 3,
+  "rowCount": 60,
+  "validationIssueCount": 0,
+  "messages": []
+}</code></pre>
+
+<h2 id="step6">Step 6: Validate Without Exporting</h2>
+<pre><code>dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- validate \
+  --provider sqlite \
+  --connection "Data Source=./sample.db" \
+  --seed 42 \
+  --rows 20</code></pre>
+<p>Exit code 0 = clean. Exit code 3 = validation issues (details on stderr).</p>
+
+<h2 id="step7">Step 7: Export a Single Format</h2>
+<pre><code>dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- export \
+  --provider sqlite \
+  --connection "Data Source=./sample.db" \
+  --seed 42 \
+  --rows 20 \
+  --format sql \
+  --output ./sql-only</code></pre>
+<p>Supported <code>--format</code> values: <code>json</code>, <code>csv</code>, <code>sql</code>.</p>
+<h3>Sample SQL Output</h3>
+<pre><code>INSERT INTO "main"."employees" ("id","department_id","email","name","manager_id","status")
+VALUES (1,3,'alice@example.com','Alice Johnson',NULL,'active');
+INSERT INTO "main"."employees" ("id","department_id","email","name","manager_id","status")
+VALUES (2,1,'bob@example.com','Bob Smith',1,'active');</code></pre>
+
+<h2 id="exitcodes">Exit Codes</h2>
+<table>
+  <tr><th>Command</th><th>Code</th><th>Meaning</th></tr>
+  <tr><td>Any</td><td>0</td><td>Success</td></tr>
+  <tr><td>Any</td><td>1</td><td>Invalid rules file or unknown format</td></tr>
+  <tr><td><code>generate</code></td><td>2</td><td>Validation issues (data written)</td></tr>
+  <tr><td><code>validate</code></td><td>3</td><td>Validation issues (no files written)</td></tr>
+</table>
+
+<h2 id="next">Next Steps</h2>
+<ul>
+  <li><a href="rules-dsl.html">Rules DSL Reference</a></li>
+  <li><a href="compliance-profiles.html">Compliance Profiles</a></li>
+  <li><a href="rest-api.html">REST API How-To</a></li>
+</ul>
+</div>
+<footer><p>&copy; 2024 Concoction contributors &bull; MIT Licence &bull; <a href="https://github.com/MaximumTrainer/concoction">GitHub</a></p></footer>
+</body>
+</html>

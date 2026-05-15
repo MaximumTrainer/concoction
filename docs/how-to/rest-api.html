@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REST API — Concoction</title>
+<style></style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="nav-brand">&#9879; Concoction</a>
+  <ul class="nav-links">
+    <li><a href="../user-guide.html">User Guide</a></li>
+    <li><a href="cli-quickstart.html">CLI</a></li>
+    <li><a href="rules-dsl.html">Rules DSL</a></li>
+    <li><a href="compliance-profiles.html">Compliance</a></li>
+    <li><a href="rest-api.html">API</a></li>
+    <li><a href="typescript-sdk.html">TypeScript SDK</a></li>
+    <li><a href="https://github.com/MaximumTrainer/concoction">GitHub</a></li>
+  </ul>
+</nav>
+<div class="page">
+<h1>REST API Reference</h1>
+<p>ASP.NET Core Minimal API. Listens on port 5000 by default. Swagger UI at <code>/swagger</code>.</p>
+
+<h2 id="auth">Authentication</h2>
+<p>All endpoints require the <code>X-Api-Key</code> header:</p>
+<pre><code>X-Api-Key: cnc_yoursecrethere</code></pre>
+<p>Missing or invalid keys return <code>401 Unauthorized</code>.</p>
+
+<h2 id="ratelimit">Rate Limiting</h2>
+<p>Fixed window: <strong>100 requests per minute</strong>. Exceeding the limit returns <code>429 Too Many Requests</code>.</p>
+
+<h2 id="swagger">Swagger UI</h2>
+<p><a href="http://localhost:5000/swagger">http://localhost:5000/swagger</a> — all routes described with OpenAPI annotations.</p>
+
+<h2 id="accounts">Accounts</h2>
+
+<h4>POST /accounts</h4>
+<pre><code>POST /accounts
+{ "name": "Acme Corp" }
+
+200 OK
+{ "id": "3fa85f64-...", "name": "Acme Corp", "createdAt": "2024-06-01T10:00:00Z" }</code></pre>
+
+<h4>GET /accounts/{id}</h4>
+<pre><code>GET /accounts/3fa85f64-...
+
+200 OK  { "id": "3fa85f64-...", "name": "Acme Corp", "createdAt": "..." }
+404     Account not found</code></pre>
+
+<h4>GET /accounts/{id}/members</h4>
+<pre><code>200 OK
+[{ "accountId": "...", "userId": "usr_alice", "role": "Owner", "joinedAt": "..." }]</code></pre>
+
+<h4>POST /accounts/{id}/invitations</h4>
+<pre><code>POST /accounts/3fa85f64-.../invitations
+{ "inviteeEmail": "bob@example.com", "expiry": "48:00:00" }
+
+200 OK  (invitation object with token)</code></pre>
+
+<h4>POST /accounts/invitations/accept</h4>
+<pre><code>POST /accounts/invitations/accept
+{ "token": "invite_abc123..." }
+
+200 OK  (AccountMembership)</code></pre>
+
+<h2 id="workspaces">Workspaces</h2>
+
+<h4>POST /workspaces</h4>
+<pre><code>POST /workspaces
+{ "accountId": "3fa85f64-...", "name": "Production Clone" }
+
+200 OK  { "id": "9a3b2c1d-...", "accountId": "...", "name": "Production Clone", "createdAt": "..." }</code></pre>
+
+<h4>GET /workspaces/{id}</h4>
+<pre><code>GET /workspaces/9a3b2c1d-...</code></pre>
+
+<h4>POST /workspaces/{id}/members</h4>
+<pre><code>{ "userId": "usr_bob", "role": "Editor" }
+Roles: Viewer | Editor | Admin</code></pre>
+
+<h4>DELETE /workspaces/{id}/members/{userId}</h4>
+<pre><code>204 No Content</code></pre>
+
+<h2 id="projects">Projects</h2>
+
+<h4>POST /projects</h4>
+<pre><code>POST /projects
+{ "workspaceId": "9a3b2c1d-...", "name": "Orders Dataset" }
+
+200 OK  { "id": "proj-001", "workspaceId": "...", "name": "Orders Dataset", "isArchived": false, "createdAt": "..." }</code></pre>
+
+<h4>GET /projects/{id}</h4>
+<pre><code>404 if project not found or archived</code></pre>
+
+<h4>DELETE /projects/{id}</h4>
+<p>Soft-delete (archive). Returns archived project with <code>isArchived: true</code>.</p>
+
+<h2 id="runs">Runs</h2>
+
+<h4>GET /runs</h4>
+<p>Query params: <code>page</code> (default 1), <code>pageSize</code> (default 20).</p>
+<pre><code>200 OK
+{
+  "items": [{
+    "id": "run-abc123",
+    "status": "Completed",
+    "createdAt": "...", "startedAt": "...", "completedAt": "...",
+    "seed": 42,
+    "requestedRowCounts": { "public.users": 100 }
+  }],
+  "totalCount": 1,
+  "page": 1,
+  "pageSize": 20
+}</code></pre>
+
+<h4>Run Status Values</h4>
+<table>
+  <tr><th>Status</th><th>Description</th></tr>
+  <tr><td>Queued</td><td>Awaiting execution</td></tr>
+  <tr><td>Running</td><td>In progress</td></tr>
+  <tr><td>Completed</td><td>Finished successfully</td></tr>
+  <tr><td>Failed</td><td>Terminated with error</td></tr>
+  <tr><td>Cancelled</td><td>Cancelled before completion</td></tr>
+</table>
+
+<h4>GET /runs/{id}</h4>
+<pre><code>200 OK  (DatasetRun object)
+404     Run not found</code></pre>
+
+<h4>POST /runs/{id}/cancel</h4>
+<pre><code>200 OK  (updated run)
+409     Run is not in a cancellable state</code></pre>
+
+<h2 id="workflows">Workflows</h2>
+
+<h4>POST /workflows</h4>
+<pre><code>POST /workflows
+{
+  "workspaceId": "9a3b2c1d-...",
+  "name": "Nightly Seed Refresh",
+  "steps": [
+    { "type": "generate", "rows": 500 },
+    { "type": "export", "format": "sql" }
+  ]
+}
+
+200 OK  { "id": "wf-001", "workspaceId": "...", "name": "...", "isDisabled": false, "createdAt": "..." }</code></pre>
+
+<h4>GET /workflows/{id}</h4>
+<h4>POST /workflows/{id}/run</h4>
+<pre><code>200 OK  { "runId": "run-xyz789" }</code></pre>
+<h4>GET /workflows/{id}/runs</h4>
+
+<h2 id="chat">Chat</h2>
+
+<h4>GET /chat/sessions</h4>
+<h4>POST /chat/sessions</h4>
+<pre><code>POST /chat/sessions
+{ "workspaceId": "9a3b2c1d-...", "title": "Schema exploration" }
+
+200 OK  { "id": "sess-001", "workspaceId": "...", "title": "...", "mode": "standard", "archivedAt": null, "createdAt": "..." }</code></pre>
+
+<h4>POST /chat/sessions/{id}/messages</h4>
+<pre><code>POST /chat/sessions/sess-001/messages
+{ "content": "Discover the schema for this database." }
+
+200 OK
+{ "id": "msg-001", "sessionId": "sess-001", "role": "assistant", "content": "I found 3 tables...", "createdAt": "..." }</code></pre>
+
+<h2 id="apikeys">API Keys</h2>
+
+<h4>POST /accounts/{accountId}/api-keys</h4>
+<pre><code>POST /accounts/3fa85f64-.../api-keys
+{
+  "name": "ci-pipeline",
+  "scopes": ["workspace:read", "workspace:write"],
+  "expiry": "90.00:00:00"
+}
+
+200 OK
+{
+  "id": "3fa85f64-...",
+  "name": "ci-pipeline",
+  "plaintextSecret": "cnc_abc123...",
+  "scopes": ["workspace:read","workspace:write"],
+  "expiresAt": "2024-09-01T00:00:00Z"
+}</code></pre>
+<p>The <code>plaintextSecret</code> is shown <strong>once only</strong>.</p>
+
+<h4>GET /accounts/{accountId}/api-keys</h4>
+<p>Returns metadata only (no secrets).</p>
+
+<h4>DELETE /accounts/{accountId}/api-keys/{keyId}</h4>
+<p>Revokes the key immediately. Returns revoked key with <code>isRevoked: true</code>.</p>
+
+<h2 id="errors">Error Responses</h2>
+<p>All errors use RFC 7807 Problem Details format:</p>
+<pre><code>{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "Account 3fa85f64-... was not found."
+}</code></pre>
+<table>
+  <tr><th>Status</th><th>Meaning</th></tr>
+  <tr><td>400</td><td>Bad request (validation failed)</td></tr>
+  <tr><td>401</td><td>Missing or invalid API key</td></tr>
+  <tr><td>403</td><td>Insufficient scopes</td></tr>
+  <tr><td>404</td><td>Resource not found</td></tr>
+  <tr><td>409</td><td>Conflict (e.g. cancel a completed run)</td></tr>
+  <tr><td>429</td><td>Rate limit exceeded</td></tr>
+  <tr><td>500</td><td>Internal server error</td></tr>
+</table>
+
+<h2 id="start">Starting the API Locally</h2>
+<pre><code>dotnet run --project ./Concoction.Api/Concoction.Api.csproj</code></pre>
+<p>Default: SQLite at <code>concoction.db</code> in the working directory. Configure PostgreSQL via <code>appsettings.json</code> or environment variables.</p>
+</div>
+<footer><p>&copy; 2024 Concoction contributors &bull; MIT Licence &bull; <a href="https://github.com/MaximumTrainer/concoction">GitHub</a></p></footer>
+</body>
+</html>

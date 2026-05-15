@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TypeScript SDK — Concoction</title>
+<style></style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="nav-brand">&#9879; Concoction</a>
+  <ul class="nav-links">
+    <li><a href="../user-guide.html">User Guide</a></li>
+    <li><a href="cli-quickstart.html">CLI</a></li>
+    <li><a href="rules-dsl.html">Rules DSL</a></li>
+    <li><a href="compliance-profiles.html">Compliance</a></li>
+    <li><a href="rest-api.html">API</a></li>
+    <li><a href="typescript-sdk.html">TypeScript SDK</a></li>
+    <li><a href="https://github.com/MaximumTrainer/concoction">GitHub</a></li>
+  </ul>
+</nav>
+<div class="page">
+<h1>TypeScript SDK</h1>
+<p>The <code>@concoction/client</code> npm package provides a fully-typed client for the Concoction REST API. Ships as CJS + ESM + TypeScript declaration files.</p>
+
+<h2 id="install">Installation</h2>
+<pre><code>npm install @concoction/client</code></pre>
+<p>Or build from source:</p>
+<pre><code>cd sdk/typescript
+npm install
+npm run build</code></pre>
+
+<h2 id="quickstart">Quick Start</h2>
+<pre><code>import { ConcoctionClient, ConcoctionError } from "@concoction/client";
+
+const client = new ConcoctionClient({
+  baseUrl: "http://localhost:5000",
+  apiKey:  "cnc_yoursecrethere",
+});
+
+const account   = await client.createAccount("Acme Corp");
+const workspace = await client.createWorkspace(account.id, "Production Clone");
+const project   = await client.createProject(workspace.id, "Orders Dataset");</code></pre>
+
+<h2 id="constructor">Constructor Options</h2>
+<pre><code>interface ConcoctionClientOptions {
+  /** Base URL of the Concoction API */
+  baseUrl: string;
+  /** API key sent as X-Api-Key header */
+  apiKey: string;
+  /** Optional custom fetch — defaults to globalThis.fetch */
+  fetch?: typeof globalThis.fetch;
+}</code></pre>
+
+<h2 id="accounts">Accounts</h2>
+<h4>createAccount(name)</h4>
+<pre><code>const account = await client.createAccount("Acme Corp");
+// { id: "3fa85f64-...", name: "Acme Corp", createdAt: "2024-06-01T10:00:00Z" }</code></pre>
+
+<h4>getAccount(accountId)</h4>
+<pre><code>const account = await client.getAccount("3fa85f64-...");</code></pre>
+
+<h4>listMembers(accountId)</h4>
+<pre><code>const members = await client.listMembers(account.id);
+// [{ accountId, userId, role: "Owner"|"Member", joinedAt }]</code></pre>
+
+<h4>inviteUser(accountId, email, expiryHours?)</h4>
+<pre><code>await client.inviteUser(account.id, "bob@example.com", 48);</code></pre>
+
+<h2 id="workspaces">Workspaces</h2>
+<h4>createWorkspace(accountId, name)</h4>
+<pre><code>const workspace = await client.createWorkspace(account.id, "Dev Sandbox");</code></pre>
+
+<h4>getWorkspace(workspaceId)</h4>
+<pre><code>const workspace = await client.getWorkspace("9a3b2c1d-...");</code></pre>
+
+<h2 id="projects">Projects</h2>
+<h4>createProject(workspaceId, name)</h4>
+<pre><code>const project = await client.createProject(workspace.id, "Orders Dataset");</code></pre>
+
+<h4>listProjects(workspaceId)</h4>
+<pre><code>const projects = await client.listProjects(workspace.id);</code></pre>
+
+<h4>getProject(projectId)</h4>
+<pre><code>const project = await client.getProject("proj-001");</code></pre>
+
+<h4>archiveProject(projectId)</h4>
+<pre><code>await client.archiveProject("proj-001"); // soft-delete</code></pre>
+
+<h2 id="runs">Dataset Runs</h2>
+<h4>listRuns(projectId, page?, pageSize?)</h4>
+<pre><code>const page = await client.listRuns(project.id, 1, 20);
+// { items: [...], totalCount: N, page: 1, pageSize: 20 }</code></pre>
+
+<h4>getRun(runId)</h4>
+<pre><code>const run = await client.getRun("run-abc123");
+// status: "Queued"|"Running"|"Completed"|"Failed"|"Cancelled"</code></pre>
+
+<h4>cancelRun(runId)</h4>
+<pre><code>await client.cancelRun("run-abc123");</code></pre>
+
+<h4>pollRun(runId, options?)</h4>
+<p>Polls until terminal state. Throws <code>ConcoctionError</code> on failure, cancellation, or timeout.</p>
+<pre><code>const { runId } = await client.runWorkflow(workflow.id);
+const completed = await client.pollRun(runId, {
+  intervalMs: 3000,    // default 2000
+  timeoutMs:  300_000, // default 120000
+});
+console.log("Completed at:", completed.completedAt);</code></pre>
+
+<h2 id="workflows">Workflows</h2>
+<h4>createWorkflow(workspaceId, name, steps)</h4>
+<pre><code>const workflow = await client.createWorkflow(workspace.id, "Nightly Refresh", [
+  { type: "generate", rows: 500 },
+  { type: "export",   format: "sql" },
+]);</code></pre>
+
+<h4>runWorkflow(workflowId)</h4>
+<pre><code>const { runId } = await client.runWorkflow(workflow.id);
+const run = await client.pollRun(runId);</code></pre>
+
+<h2 id="chat">Chat</h2>
+<h4>createChatSession(workspaceId, title)</h4>
+<pre><code>const session = await client.createChatSession(workspace.id, "Schema exploration");
+// { id, workspaceId, title, mode, archivedAt, createdAt }</code></pre>
+
+<h4>sendMessage(sessionId, content)</h4>
+<pre><code>const reply = await client.sendMessage(session.id, "Show me the schema.");
+console.log(reply.content);</code></pre>
+
+<h4>getChatHistory(sessionId)</h4>
+<pre><code>const messages = await client.getChatHistory(session.id);</code></pre>
+
+<h4>archiveChatSession(sessionId)</h4>
+<pre><code>await client.archiveChatSession(session.id);</code></pre>
+
+<h2 id="apikeys">API Keys</h2>
+<h4>createApiKey(accountId, displayName, scopes, expiresAt?)</h4>
+<pre><code>const result = await client.createApiKey(
+  account.id,
+  "ci-pipeline",
+  ["workspace:read", "workspace:write"],
+  "2025-01-01T00:00:00Z"
+);
+console.log(result.secret); // cnc_abc123... — shown once only</code></pre>
+
+<h4>listApiKeys(accountId)</h4>
+<pre><code>const keys = await client.listApiKeys(account.id);</code></pre>
+
+<h4>revokeApiKey(keyId)</h4>
+<pre><code>await client.revokeApiKey("3fa85f64-...");</code></pre>
+
+<h2 id="errors">Error Handling</h2>
+<pre><code>try {
+  const account = await client.getAccount("non-existent");
+} catch (err) {
+  if (err instanceof ConcoctionError) {
+    console.error(HTTP +""+\+""+: +""+\+"");
+    console.error(err.detail);
+  }
+}</code></pre>
+<table>
+  <tr><th>Property</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>message</code></td><td>string</td><td>e.g. "HTTP 404 Not Found"</td></tr>
+  <tr><td><code>status</code></td><td>number</td><td>HTTP status code (0 for timeout/cancel errors)</td></tr>
+  <tr><td><code>detail</code></td><td>string?</td><td>Problem Details <code>detail</code> or <code>title</code> field</td></tr>
+</table>
+
+<h2 id="types">Exported Types</h2>
+<pre><code>import type {
+  Account, AccountMembership, ApiKey, ApiKeyCreateResult,
+  ChatMessage, ChatSession, ConcoctionClientOptions,
+  DatasetRun, PaginatedResult, Project, Workspace,
+  Workflow, ComplianceProfile,
+} from "@concoction/client";</code></pre>
+
+<h2 id="build">Building from Source</h2>
+<pre><code>cd sdk/typescript
+npm install
+npm run build</code></pre>
+<p>Output in <code>dist/</code>: <code>index.cjs</code>, <code>index.js</code> (ESM), <code>index.d.ts</code>. Built with <strong>tsup</strong>.</p>
+
+<h2 id="custom-fetch">Custom Fetch (Testing)</h2>
+<pre><code>const mockFetch = vi.fn().mockResolvedValue(
+  new Response(JSON.stringify({ id: "acc-1", name: "Test" }), { status: 200 })
+);
+
+const client = new ConcoctionClient({
+  baseUrl: "http://localhost:5000",
+  apiKey:  "cnc_test",
+  fetch:   mockFetch,
+});</code></pre>
+</div>
+<footer><p>&copy; 2024 Concoction contributors &bull; MIT Licence &bull; <a href="https://github.com/MaximumTrainer/concoction">GitHub</a></p></footer>
+</body>
+</html>

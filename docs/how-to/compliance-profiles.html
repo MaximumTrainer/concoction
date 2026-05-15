@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compliance Profiles — Concoction</title>
+<style></style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="nav-brand">&#9879; Concoction</a>
+  <ul class="nav-links">
+    <li><a href="../user-guide.html">User Guide</a></li>
+    <li><a href="cli-quickstart.html">CLI</a></li>
+    <li><a href="rules-dsl.html">Rules DSL</a></li>
+    <li><a href="compliance-profiles.html">Compliance</a></li>
+    <li><a href="rest-api.html">API</a></li>
+    <li><a href="typescript-sdk.html">TypeScript SDK</a></li>
+    <li><a href="https://github.com/MaximumTrainer/concoction">GitHub</a></li>
+  </ul>
+</nav>
+<div class="page">
+<h1>Compliance Profiles</h1>
+<p>Compliance profiles automatically mask sensitive fields to reduce the risk of generating realistic PII in environments subject to data privacy regulations.</p>
+
+<h2 id="profiles">Available Profiles</h2>
+<table>
+  <tr><th>Profile</th><th><code>--compliance-profile</code> value</th><th>Description</th></tr>
+  <tr><td>Default</td><td><code>Default</code></td><td>No masking. All fields generate realistic values.</td></tr>
+  <tr><td>Healthcare</td><td><code>Healthcare</code></td><td>HIPAA-inspired: masks contact and demographic fields.</td></tr>
+  <tr><td>Finance</td><td><code>Finance</code></td><td>PCI-inspired: masks Healthcare fields plus financial identifiers.</td></tr>
+</table>
+
+<h2 id="default">Default Profile</h2>
+<p>No masking applied. All DataKind values produce realistic synthetic output. This is the default when <code>--compliance-profile</code> is omitted.</p>
+
+<h2 id="healthcare">Healthcare Profile (HIPAA-style)</h2>
+<table>
+  <tr><th>DataKind / Category</th><th>Treatment</th></tr>
+  <tr><td>Email</td><td>Replaced with anonymised placeholder (e.g. <code>masked-1@redacted.invalid</code>)</td></tr>
+  <tr><td>Phone</td><td>Replaced with anonymised placeholder (e.g. <code>+10000000001</code>)</td></tr>
+  <tr><td>Name</td><td>Replaced with anonymised placeholder</td></tr>
+  <tr><td>FirstName</td><td>Replaced with anonymised placeholder</td></tr>
+  <tr><td>LastName</td><td>Replaced with anonymised placeholder</td></tr>
+  <tr><td>Address</td><td>Replaced with anonymised placeholder</td></tr>
+  <tr><td>PostalCode</td><td>Replaced with anonymised placeholder</td></tr>
+</table>
+
+<h2 id="finance">Finance Profile (PCI-style)</h2>
+<p>Inherits all Healthcare masking, plus:</p>
+<table>
+  <tr><th>DataKind / Category</th><th>Treatment</th></tr>
+  <tr><td>All Healthcare fields</td><td>Masked as above</td></tr>
+  <tr><td>Currency</td><td>Anonymised or zeroed</td></tr>
+  <tr><td>Financial identifier columns</td><td>Masked</td></tr>
+</table>
+
+<h2 id="cli">CLI Usage</h2>
+<pre><code># Healthcare masking
+dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- generate \
+  --provider postgres \
+  --connection "Host=localhost;Database=prod_clone;Username=dev;Password=dev" \
+  --compliance-profile Healthcare \
+  --rows 1000 \
+  --output ./artifacts
+
+# Finance masking
+dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- generate \
+  --provider sqlite \
+  --connection "Data Source=./finance.db" \
+  --compliance-profile Finance \
+  --rows 500</code></pre>
+
+<h2 id="api">API Usage</h2>
+<pre><code>POST /runs
+{
+  "projectId": "3fa85f64-...",
+  "seed": 42,
+  "rowCounts": { "public.users": 100 },
+  "complianceProfile": "Healthcare"
+}</code></pre>
+
+<h2 id="interaction">Interaction with Rules</h2>
+<table>
+  <tr><th>Scenario</th><th>Result</th></tr>
+  <tr><td>Column has <code>fixedValue</code> in rules</td><td><code>fixedValue</code> always wins — compliance masking does NOT override it.</td></tr>
+  <tr><td>Column has <code>strategy</code> AND compliance would mask it</td><td>Compliance profile masking takes effect (compliance wins).</td></tr>
+  <tr><td>Column has no rules entry AND compliance masks it</td><td>Column is masked.</td></tr>
+  <tr><td>Column has no rules entry AND compliance does not mask it</td><td>Column uses inferred or rules strategy.</td></tr>
+</table>
+<p><strong>Summary:</strong> <code>fixedValue</code> wins over everything; compliance wins over <code>strategy</code> for sensitive categories.</p>
+
+<h2 id="decisions">ComplianceDecisions Output</h2>
+<p>Every column affected by a compliance profile is recorded in <code>GenerationResult.ComplianceDecisions</code>:</p>
+<table>
+  <tr><th>Field</th><th>Description</th></tr>
+  <tr><td><code>Table</code></td><td>Qualified table name</td></tr>
+  <tr><td><code>Column</code></td><td>Column name</td></tr>
+  <tr><td><code>Strategy</code></td><td>The SensitiveFieldStrategy applied</td></tr>
+  <tr><td><code>Classification</code></td><td>Detected sensitive category (e.g. <code>"Email"</code>)</td></tr>
+  <tr><td><code>Reason</code></td><td>Human-readable explanation</td></tr>
+  <tr><td><code>Source</code></td><td><code>ComplianceProfile</code> or <code>UserRule</code></td></tr>
+</table>
+<pre><code>{
+  "table": "public.users",
+  "column": "email",
+  "strategy": "Mask",
+  "classification": "Email",
+  "reason": "Healthcare profile: email addresses are PHI and must be masked.",
+  "source": "ComplianceProfile"
+}</code></pre>
+
+<h2 id="extending">Extending</h2>
+<p>To add a custom compliance profile, implement <code>ISensitiveFieldClassifier</code> in <code>Concoction.Application</code> and register it in the DI container.</p>
+</div>
+<footer><p>&copy; 2024 Concoction contributors &bull; MIT Licence &bull; <a href="https://github.com/MaximumTrainer/concoction">GitHub</a></p></footer>
+</body>
+</html>

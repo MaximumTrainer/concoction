@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rules DSL — Concoction</title>
+<style></style>
+</head>
+<body>
+<nav>
+  <a href="../index.html" class="nav-brand">&#9879; Concoction</a>
+  <ul class="nav-links">
+    <li><a href="../user-guide.html">User Guide</a></li>
+    <li><a href="cli-quickstart.html">CLI</a></li>
+    <li><a href="rules-dsl.html">Rules DSL</a></li>
+    <li><a href="compliance-profiles.html">Compliance</a></li>
+    <li><a href="rest-api.html">API</a></li>
+    <li><a href="typescript-sdk.html">TypeScript SDK</a></li>
+    <li><a href="https://github.com/MaximumTrainer/concoction">GitHub</a></li>
+  </ul>
+</nav>
+<div class="page">
+<h1>Rules DSL Reference</h1>
+<p>The Rules DSL lets you override generation strategies for specific tables and columns. Rules files are YAML or JSON (version <code>"1"</code>) passed via <code>--rules &lt;path&gt;</code>.</p>
+
+<h2 id="formats">File Formats</h2>
+<h3>YAML</h3>
+<pre><code>version: "1"
+tables:
+  - table: "public.users"
+    columns:
+      - column: "email"
+        strategy: "Email"</code></pre>
+<h3>JSON</h3>
+<pre><code>{
+  "version": "1",
+  "tables": [
+    {
+      "table": "public.users",
+      "columns": [
+        { "column": "email", "strategy": "Email" }
+      ]
+    }
+  ]
+}</code></pre>
+
+<h2 id="fields">Top-Level Fields</h2>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+  <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>Must be <code>"1"</code>.</td></tr>
+  <tr><td><code>tables</code></td><td>array</td><td>No</td><td>Zero or more table rule entries.</td></tr>
+</table>
+
+<h2 id="table-fields">Table Rule Fields</h2>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+  <tr><td><code>table</code></td><td>string</td><td>Yes</td><td>Qualified table name, e.g. <code>"public.users"</code> or <code>"main.users"</code>.</td></tr>
+  <tr><td><code>columns</code></td><td>array</td><td>No</td><td>Column rule entries.</td></tr>
+</table>
+
+<h2 id="column-fields">Column Rule Fields</h2>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>column</code></td><td>string</td><td>Column name. Required.</td></tr>
+  <tr><td><code>strategy</code></td><td>string</td><td>DataKind name (e.g. <code>"Email"</code>, <code>"Integer"</code>).</td></tr>
+  <tr><td><code>fixedValue</code></td><td>any</td><td>Emit this exact value every row. Overrides strategy.</td></tr>
+  <tr><td><code>nullRate</code></td><td>number [0,1]</td><td>Fraction of rows emitting null.</td></tr>
+  <tr><td><code>seedOffset</code></td><td>integer</td><td>Added to the global seed for this column's generator.</td></tr>
+  <tr><td><code>distribution</code></td><td>map&lt;string,number&gt;</td><td>Weighted discrete distribution.</td></tr>
+  <tr><td><code>jsonPaths</code></td><td>array</td><td>Per-path strategies for JSON/JSONB columns.</td></tr>
+</table>
+
+<h2 id="strategy">strategy Values</h2>
+<table>
+  <tr><th>Value</th><th>Generated output</th></tr>
+  <tr><td>Boolean</td><td>true or false</td></tr>
+  <tr><td>Integer</td><td>Random integer</td></tr>
+  <tr><td>Long</td><td>Random 64-bit integer</td></tr>
+  <tr><td>Decimal</td><td>Random decimal</td></tr>
+  <tr><td>Double</td><td>Random double</td></tr>
+  <tr><td>String</td><td>Random alphanumeric string</td></tr>
+  <tr><td>Guid</td><td>Random GUID</td></tr>
+  <tr><td>Date</td><td>Random date</td></tr>
+  <tr><td>DateTime</td><td>Random datetime</td></tr>
+  <tr><td>Json</td><td>Empty JSON object {}</td></tr>
+  <tr><td>Binary</td><td>Random bytes (base64)</td></tr>
+  <tr><td>Email</td><td>Valid email address</td></tr>
+  <tr><td>Phone</td><td>E.164 phone number</td></tr>
+  <tr><td>Name</td><td>Full person name</td></tr>
+  <tr><td>FirstName</td><td>Given name</td></tr>
+  <tr><td>LastName</td><td>Family name</td></tr>
+  <tr><td>Address</td><td>Street address</td></tr>
+  <tr><td>PostalCode</td><td>Postal/ZIP code</td></tr>
+  <tr><td>CountryCode</td><td>ISO 3166-1 alpha-2 code</td></tr>
+  <tr><td>Url</td><td>HTTP/HTTPS URL</td></tr>
+  <tr><td>IpAddress</td><td>IPv4 address</td></tr>
+  <tr><td>Currency</td><td>ISO 4217 currency code</td></tr>
+  <tr><td>CompanyName</td><td>Company name</td></tr>
+  <tr><td>Text</td><td>Long-form lorem ipsum text</td></tr>
+  <tr><td>Uuid</td><td>UUID string</td></tr>
+  <tr><td>TimestampTz</td><td>ISO 8601 timestamp with timezone</td></tr>
+</table>
+
+<h2 id="fixedvalue">fixedValue</h2>
+<pre><code>- column: "status"
+  fixedValue: "active"
+
+- column: "is_verified"
+  fixedValue: true
+
+- column: "score"
+  fixedValue: 100</code></pre>
+<p><code>fixedValue</code> takes the highest precedence — overrides strategy, distribution, and compliance profile masking.</p>
+
+<h2 id="nullrate">nullRate</h2>
+<pre><code>- column: "middle_name"
+  nullRate: 0.7</code></pre>
+<p>70% of rows will be null. The remaining 30% use the inferred or specified strategy.</p>
+<p>Combine with distribution:</p>
+<pre><code>- column: "tier"
+  nullRate: 0.1
+  distribution:
+    silver: 0.5
+    gold:   0.3
+    platinum: 0.2</code></pre>
+
+<h2 id="seedoffset">seedOffset</h2>
+<p>Decorrelates columns that would otherwise produce correlated output:</p>
+<pre><code>- column: "first_name"
+  strategy: "FirstName"
+  seedOffset: 1
+
+- column: "last_name"
+  strategy: "LastName"
+  seedOffset: 2</code></pre>
+
+<h2 id="distribution">distribution</h2>
+<pre><code>- column: "country"
+  distribution:
+    US: 0.6
+    GB: 0.2
+    DE: 0.1
+    FR: 0.1</code></pre>
+<p>Weights are normalised at generation time. If they sum to less than 1.0, the remainder uses a random generated value.</p>
+
+<h2 id="jsonpaths">JSON Path Strategies</h2>
+<h3>YAML</h3>
+<pre><code>- column: "metadata"
+  jsonPaths:
+    - path: "$.email"
+      strategy: "Email"
+    - path: "$.address.city"
+      strategy: "String"
+    - path: "$.score"
+      strategy: "Integer"
+    - path: "$.tag"
+      fixedValue: "synthetic"
+    - path: "$.optional_field"
+      strategy: "String"
+      nullRate: 0.5</code></pre>
+<h3>JSON</h3>
+<pre><code>{
+  "column": "metadata",
+  "jsonPaths": [
+    { "path": "$.email", "strategy": "Email" },
+    { "path": "$.address.city", "strategy": "String" },
+    { "path": "$.score", "strategy": "Integer" },
+    { "path": "$.tag", "fixedValue": "synthetic" },
+    { "path": "$.optional_field", "strategy": "String", "nullRate": 0.5 }
+  ]
+}</code></pre>
+<p>Paths use dollar-dot notation: <code>$.field</code>, <code>$.parent.child</code>. Array indexing is not supported.</p>
+<h3>JsonPath Rule Fields</h3>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>path</code></td><td>string</td><td>Dollar-dot path. Required.</td></tr>
+  <tr><td><code>strategy</code></td><td>string</td><td>DataKind name. Defaults to "String".</td></tr>
+  <tr><td><code>fixedValue</code></td><td>any</td><td>Fixed value for this path.</td></tr>
+  <tr><td><code>nullRate</code></td><td>number [0,1]</td><td>Probability path is omitted.</td></tr>
+</table>
+
+<h2 id="precedence">Precedence Merge</h2>
+<p>When multiple rule sources are combined, Concoction merges in priority order:</p>
+<pre><code>global defaults  &lt;  project defaults  &lt;  table rules  &lt;  column rules</code></pre>
+<p>More specific rules win. Merging is performed by <code>IRuleConfigurationService.Merge()</code>.</p>
+
+<h2 id="validation">Validation</h2>
+<p>The CLI validates rules before generation. Errors are printed to stderr; exit code 1.</p>
+<ul>
+  <li><code>version</code> must be <code>"1"</code></li>
+  <li><code>table</code> and <code>column</code> must be non-empty strings</li>
+  <li><code>nullRate</code> must be between 0 and 1</li>
+  <li><code>strategy</code> must be a recognised DataKind name</li>
+</ul>
+
+<h2 id="complete">Complete YAML Example</h2>
+<pre><code>version: "1"
+tables:
+  - table: "public.users"
+    columns:
+      - column: "email"
+        strategy: "Email"
+      - column: "name"
+        strategy: "Name"
+      - column: "status"
+        fixedValue: "active"
+      - column: "discount"
+        nullRate: 0.3
+        distribution:
+          silver:   0.5
+          gold:     0.3
+          platinum: 0.2
+      - column: "preferences"
+        jsonPaths:
+          - path: "$.email"
+            strategy: "Email"
+          - path: "$.address.city"
+            strategy: "String"
+          - path: "$.score"
+            strategy: "Integer"
+          - path: "$.tag"
+            fixedValue: "synthetic"
+          - path: "$.optional"
+            strategy: "String"
+            nullRate: 0.5
+
+  - table: "public.orders"
+    columns:
+      - column: "status"
+        distribution:
+          pending:    0.4
+          processing: 0.3
+          shipped:    0.2
+          cancelled:  0.1
+      - column: "notes"
+        nullRate: 0.6
+        strategy: "Text"</code></pre>
+</div>
+<footer><p>&copy; 2024 Concoction contributors &bull; MIT Licence &bull; <a href="https://github.com/MaximumTrainer/concoction">GitHub</a></p></footer>
+</body>
+</html>
