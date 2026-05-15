@@ -20,7 +20,7 @@ dotnet test Concoction.slnx
 ### Example (SQLite)
 
 ```bash
-dotnet run --project /home/runner/work/concoction/concoction/Concoction.Cli/Concoction.Cli.csproj -- discover --provider sqlite --connection "Data Source=/tmp/concoction.db"
+dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- discover --provider sqlite --connection "Data Source=/tmp/concoction.db"
 ```
 
 ## GitHub issue bootstrap
@@ -28,6 +28,7 @@ dotnet run --project /home/runner/work/concoction/concoction/Concoction.Cli/Conc
 Run workflow `Bootstrap MVP Issues` with manifest path:
 
 - `.github/issue-manifests/concoction-mvp.json`
+
 Concoction is a proposed open-source, agentic synthetic data platform for the .NET ecosystem: a modern C# (.NET 10) equivalent of Tonic Fabricate.
 
 ## Goals

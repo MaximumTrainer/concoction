@@ -40,7 +40,7 @@ public sealed class PostgreSqlSchemaProvider(IOptions<SchemaProviderOptions> opt
                             SqlTypeMapper.MapToDataKind(c.SqlType),
                             c.IsNullable,
                             c.IsPrimaryKey,
-                            tableUniques.Any(u => u.Columns.Contains(c.Column, StringComparer.OrdinalIgnoreCase)),
+                            tableUniques.Any(u => u.Columns.Count == 1 && u.Columns.Contains(c.Column, StringComparer.OrdinalIgnoreCase)),
                             c.MaxLength,
                             c.Precision,
                             c.Scale,

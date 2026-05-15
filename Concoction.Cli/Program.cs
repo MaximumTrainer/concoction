@@ -61,6 +61,10 @@ generate.SetHandler(async (provider, connection, database, seed, rules, output, 
             Environment.ExitCode = 1;
             return;
         }
+
+        // Apply precedence merge: defaults < schema-derived < user rules.
+        var emptyConfig = new RuleConfiguration { Version = loadedRules.Version, Tables = [] };
+        loadedRules = ruleService.Merge(emptyConfig, emptyConfig, loadedRules);
     }
 
     var request = new GenerationRequest(schema, rowCounts, seed, loadedRules);

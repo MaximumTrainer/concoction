@@ -24,7 +24,7 @@ public sealed class CsvExporter : IExporter
             }
 
             var headers = table.Rows[0].Keys.OrderBy(static h => h, StringComparer.Ordinal).ToArray();
-            var lines = new List<string> { string.Join(',', headers) };
+            var lines = new List<string> { string.Join(',', headers.Select(Escape)) };
 
             foreach (var row in table.Rows)
             {
@@ -39,7 +39,8 @@ public sealed class CsvExporter : IExporter
     private static string Escape(object? value)
     {
         var text = value?.ToString() ?? string.Empty;
-        if (text.Contains(',', StringComparison.Ordinal) || text.Contains('"', StringComparison.Ordinal))
+        if (text.Contains(',', StringComparison.Ordinal) || text.Contains('"', StringComparison.Ordinal) ||
+            text.Contains('\r', StringComparison.Ordinal) || text.Contains('\n', StringComparison.Ordinal))
         {
             return $"\"{text.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
         }

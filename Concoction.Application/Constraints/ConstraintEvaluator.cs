@@ -45,9 +45,21 @@ public sealed class ConstraintEvaluator : IConstraintEvaluator
             var duplicates = rows
                 .Select((row, index) =>
                 {
-                    var key = string.Join('|', uniqueConstraint.Columns.Select(column => row.TryGetValue(column, out var value) ? value?.ToString() ?? "<null>" : "<missing>"));
+                    var columnValues = uniqueConstraint.Columns
+                        .Select(column => row.TryGetValue(column, out var value) ? value : null)
+                        .ToArray();
+
+                    // SQL semantics: NULL values are never equal to each other, so rows with any NULL
+                    // in a unique constraint column cannot violate uniqueness.
+                    if (columnValues.Any(static v => v is null))
+                    {
+                        return (key: (string?)null, index);
+                    }
+
+                    var key = string.Join('|', columnValues.Select(static v => v!.ToString()));
                     return (key, index);
                 })
+                .Where(static x => x.key is not null)
                 .GroupBy(static x => x.key, StringComparer.Ordinal)
                 .Where(static g => g.Count() > 1)
                 .SelectMany(group => group.Select(item => new ValidationIssue(table.QualifiedName, string.Join(',', uniqueConstraint.Columns), $"Duplicate unique key '{group.Key}' at row {item.index}.")));

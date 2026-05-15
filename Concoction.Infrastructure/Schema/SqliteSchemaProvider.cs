@@ -106,8 +106,16 @@ public sealed class SqliteSchemaProvider(IOptions<SchemaProviderOptions> options
         }
 
         var foreignKeys = await DiscoverForeignKeysAsync(connection, tableName, cancellationToken).ConfigureAwait(false);
+
+        // Only mark IsUnique for columns that are the sole column in a single-column unique constraint.
+        // Composite unique constraints are represented in UniqueConstraints and must not set IsUnique on individual columns.
+        var singleColumnUniqueConstraintColumns = uniqueConstraints
+            .Where(static u => u.Columns.Count == 1)
+            .Select(static u => u.Columns[0])
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var finalizedColumns = columns
-            .Select(c => c with { IsUnique = uniqueConstraints.Any(u => u.Columns.Contains(c.Name, StringComparer.OrdinalIgnoreCase)) })
+            .Select(c => c with { IsUnique = singleColumnUniqueConstraintColumns.Contains(c.Name) })
             .ToArray();
 
         return new TableSchema("main", tableName, finalizedColumns, primaryKey, foreignKeys, uniqueConstraints, indexes);

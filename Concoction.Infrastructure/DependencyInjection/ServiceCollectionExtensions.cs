@@ -18,8 +18,20 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddConcoctionApplication(this IServiceCollection services, long seed)
     {
         services.AddSingleton<IRandomService>(_ => new DeterministicRandomService(seed));
-        services.AddSingleton<IGeneratorRegistry, GeneratorRegistry>();
-        services.AddSingleton<IValueGeneratorDispatcher>(sp => (GeneratorRegistry)sp.GetRequiredService<IGeneratorRegistry>());
+
+        // Register the concrete GeneratorRegistry as a singleton, initializing defaults in the factory.
+        // Both IGeneratorRegistry and IValueGeneratorDispatcher forward to the same instance to avoid
+        // a circular dependency and fragile cast.
+        services.AddSingleton<GeneratorRegistry>(sp =>
+        {
+            var random = sp.GetRequiredService<IRandomService>();
+            var registry = new GeneratorRegistry();
+            registry.RegisterDefaults(random);
+            return registry;
+        });
+        services.AddSingleton<IGeneratorRegistry>(sp => sp.GetRequiredService<GeneratorRegistry>());
+        services.AddSingleton<IValueGeneratorDispatcher>(sp => sp.GetRequiredService<GeneratorRegistry>());
+
         services.AddSingleton<IConstraintEvaluator, ConstraintEvaluator>();
         services.AddSingleton<IGenerationPlanner, DependencyGraphPlanner>();
         services.AddSingleton<ISensitiveFieldPolicy, DefaultSensitiveFieldPolicy>();
@@ -27,14 +39,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISchemaDiscoveryService, SchemaDiscoveryService>();
         services.AddSingleton<IRowMaterializer, ReferentialRowMaterializer>();
         services.AddSingleton<ISyntheticDataOrchestrator, SyntheticDataOrchestrator>();
-
-        services.AddSingleton(sp =>
-        {
-            var registry = sp.GetRequiredService<IGeneratorRegistry>();
-            var random = sp.GetRequiredService<IRandomService>();
-            registry.RegisterDefaults(random);
-            return registry;
-        });
 
         return services;
     }
@@ -48,7 +52,9 @@ public static class ServiceCollectionExtensions
             return options.Provider.ToLowerInvariant() switch
             {
                 "postgres" or "postgresql" => ActivatorUtilities.CreateInstance<PostgreSqlSchemaProvider>(sp),
-                _ => ActivatorUtilities.CreateInstance<SqliteSchemaProvider>(sp)
+                "sqlite" => ActivatorUtilities.CreateInstance<SqliteSchemaProvider>(sp),
+                _ => throw new InvalidOperationException(
+                    $"Unsupported schema provider '{options.Provider}'. Supported values: sqlite, postgres.")
             };
         });
 

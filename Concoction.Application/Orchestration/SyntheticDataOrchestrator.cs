@@ -18,7 +18,7 @@ public sealed class SyntheticDataOrchestrator(
         var startedAt = DateTimeOffset.UtcNow;
         var plan = planner.BuildPlan(request.Schema);
 
-        var keyPool = new Dictionary<string, IReadOnlyList<object>>(StringComparer.Ordinal);
+        var keyPool = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>(StringComparer.Ordinal);
         var tableData = new List<TableData>();
         var issues = new List<ValidationIssue>();
         var compliance = new List<ComplianceDecision>();
@@ -45,11 +45,13 @@ public sealed class SyntheticDataOrchestrator(
 
             if (table.PrimaryKey.Count > 0)
             {
-                var keys = materialized.Rows
-                    .Select(row => string.Join('|', table.PrimaryKey.Select(col => row.TryGetValue(col, out var value) ? value : null)))
-                    .Cast<object>()
+                keyPool[table.QualifiedName] = materialized.Rows
+                    .Select(row => (IReadOnlyDictionary<string, object?>)table.PrimaryKey
+                        .ToDictionary(
+                            col => col,
+                            col => row.TryGetValue(col, out var val) ? val : null,
+                            StringComparer.OrdinalIgnoreCase))
                     .ToArray();
-                keyPool[table.QualifiedName] = keys;
             }
         }
 

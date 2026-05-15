@@ -21,7 +21,7 @@ public sealed record GeneratorContext(
     int RowIndex,
     RuleConfiguration? Rules,
     IReadOnlyDictionary<string, object?> CurrentRow,
-    IReadOnlyDictionary<string, IReadOnlyList<object>> ReferencePool);
+    IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> ReferencePool);
 
 public interface IValueGenerator<in TContext, TValue>
 {
@@ -64,7 +64,7 @@ public interface IRowMaterializer
         TableSchema table,
         int rowCount,
         RuleConfiguration? rules,
-        IReadOnlyDictionary<string, IReadOnlyList<object>> keyPool,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> keyPool,
         CancellationToken cancellationToken = default);
 }
 

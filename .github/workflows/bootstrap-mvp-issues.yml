@@ -51,7 +51,7 @@ jobs:
             const existing = await github.paginate(github.rest.issues.listForRepo, {
               owner,
               repo,
-              state: 'open',
+              state: 'all',
               per_page: 100
             });
 
