@@ -1,0 +1,266 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloud:
+        description: "Cloud target"
+        required: true
+        type: choice
+        options: [aws, azure, gcp, all]
+      environment:
+        description: "Environment name"
+        required: false
+        default: "prod"
+      image_tag:
+        description: "Docker image tag"
+        required: false
+        default: "latest"
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  IMAGE_NAME: concoction
+
+jobs:
+  # ──────────────────────────────────────────
+  # Build the Docker image and push to all registries
+  # ──────────────────────────────────────────
+  build-and-push:
+    name: Build & Push image
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: |
+          TAG="${{ inputs.image_tag || 'latest' }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── AWS ECR ──────────────────────────────
+      - name: Configure AWS credentials
+        if: inputs.cloud == 'aws' || inputs.cloud == 'all'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-west-2' }}
+
+      - name: Login to ECR
+        if: inputs.cloud == 'aws' || inputs.cloud == 'all'
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push to ECR
+        if: inputs.cloud == 'aws' || inputs.cloud == 'all'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.ecr-login.outputs.registry }}/${{ env.IMAGE_NAME }}-${{ inputs.environment }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Azure ACR ────────────────────────────
+      - name: Login to ACR
+        if: inputs.cloud == 'azure' || inputs.cloud == 'all'
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ vars.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push to ACR
+        if: inputs.cloud == 'azure' || inputs.cloud == 'all'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ vars.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── GCP Artifact Registry ────────────────
+      - name: Authenticate to GCP
+        if: inputs.cloud == 'gcp' || inputs.cloud == 'all'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+
+      - name: Configure Docker for Artifact Registry
+        if: inputs.cloud == 'gcp' || inputs.cloud == 'all'
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION || 'europe-west2' }}-docker.pkg.dev --quiet
+
+      - name: Build and push to Artifact Registry
+        if: inputs.cloud == 'gcp' || inputs.cloud == 'all'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ vars.GCP_REGION || 'europe-west2' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ──────────────────────────────────────────
+  # Terraform apply + smoke tests — AWS
+  # ──────────────────────────────────────────
+  deploy-aws:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: inputs.cloud == 'aws' || inputs.cloud == 'all'
+    environment: ${{ inputs.environment }}
+
+    defaults:
+      run:
+        working-directory: infra/aws
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore smoke test project
+        run: dotnet restore ../../Concoction.Tests.Smoke/Concoction.Tests.Smoke.csproj
+        working-directory: infra/aws
+
+      - name: Build smoke test project
+        run: dotnet build ../../Concoction.Tests.Smoke/Concoction.Tests.Smoke.csproj -c Release --no-restore
+        working-directory: infra/aws
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-west-2' }}
+
+      - name: Get ECR registry
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        env:
+          TF_VAR_aws_region: ${{ vars.AWS_REGION || 'eu-west-2' }}
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_image_uri: "${{ steps.ecr.outputs.registry }}/concoction-${{ inputs.environment }}:${{ needs.build-and-push.outputs.image_tag }}"
+          TF_VAR_db_password: ${{ secrets.AWS_DB_PASSWORD }}
+          TF_VAR_bootstrap_api_key: ${{ secrets.BOOTSTRAP_API_KEY }}
+        run: terraform apply -auto-approve
+
+  # ──────────────────────────────────────────
+  # Terraform apply + smoke tests — Azure
+  # ──────────────────────────────────────────
+  deploy-azure:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: inputs.cloud == 'azure' || inputs.cloud == 'all'
+    environment: ${{ inputs.environment }}
+
+    defaults:
+      run:
+        working-directory: infra/azure
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore smoke test project
+        run: dotnet restore ../../Concoction.Tests.Smoke/Concoction.Tests.Smoke.csproj
+
+      - name: Build smoke test project
+        run: dotnet build ../../Concoction.Tests.Smoke/Concoction.Tests.Smoke.csproj -c Release --no-restore
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          TF_VAR_location: ${{ vars.AZURE_LOCATION || 'uksouth' }}
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_image_tag: ${{ needs.build-and-push.outputs.image_tag }}
+          TF_VAR_db_admin_password: ${{ secrets.AZURE_DB_PASSWORD }}
+          TF_VAR_bootstrap_api_key: ${{ secrets.BOOTSTRAP_API_KEY }}
+        run: terraform apply -auto-approve
+
+  # ──────────────────────────────────────────
+  # Terraform apply + smoke tests — GCP
+  # ──────────────────────────────────────────
+  deploy-gcp:
+    name: Deploy to GCP
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: inputs.cloud == 'gcp' || inputs.cloud == 'all'
+    environment: ${{ inputs.environment }}
+
+    defaults:
+      run:
+        working-directory: infra/gcp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore smoke test project
+        run: dotnet restore ../../Concoction.Tests.Smoke/Concoction.Tests.Smoke.csproj
+
+      - name: Build smoke test project
+        run: dotnet build ../../Concoction.Tests.Smoke/Concoction.Tests.Smoke.csproj -c Release --no-restore
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ vars.GCP_REGION || 'europe-west2' }}
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_image_tag: ${{ needs.build-and-push.outputs.image_tag }}
+          TF_VAR_db_password: ${{ secrets.GCP_DB_PASSWORD }}
+          TF_VAR_bootstrap_api_key: ${{ secrets.BOOTSTRAP_API_KEY }}
+        run: terraform apply -auto-approve

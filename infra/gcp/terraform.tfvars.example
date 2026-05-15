@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and fill in values before running terraform apply.
+
+project_id   = "my-gcp-project-id"
+region       = "europe-west2"
+project_name = "concoction"
+environment  = "prod"
+
+# Image tag — set after docker push to Artifact Registry:
+image_tag = "latest"
+
+# Sensitive values — use environment variables or a secrets manager:
+db_password       = "CHANGE_ME"
+bootstrap_api_key = "CHANGE_ME"

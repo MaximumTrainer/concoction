@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and fill in values before running terraform apply.
+
+location            = "uksouth"
+resource_group_name = "rg-concoction"
+project_name        = "concoction"
+environment         = "prod"
+
+# Image tag — set after docker push to ACR:
+image_tag = "latest"
+
+# Sensitive values — use environment variables or a secrets manager:
+db_admin_password = "CHANGE_ME"
+bootstrap_api_key = "CHANGE_ME"

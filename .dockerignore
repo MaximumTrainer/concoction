@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.git/
+.github/
+infra/
+sdk/node_modules/
+docs/
+*.md
+*.user
+.vs/
+.vscode/

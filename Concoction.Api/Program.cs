@@ -1,3 +1,4 @@
+using Concoction.Api;
 using Concoction.Api.Authentication;
 using Concoction.Api.Routes;
 using Concoction.Infrastructure.DependencyInjection;
@@ -28,9 +29,12 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddConcoctionApplication(seed: 42);
 builder.Services.AddConcoctionInfrastructure(opts =>
 {
-    opts.Provider = "sqlite";
-    opts.ConnectionString = "Data Source=concoction.db";
+    opts.Provider = builder.Configuration["SchemaProvider:Provider"] ?? "sqlite";
+    opts.ConnectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? "Data Source=concoction.db";
 });
+
+builder.Services.AddHostedService<StartupBootstrapService>();
 
 var app = builder.Build();
 
@@ -42,6 +46,12 @@ app.UseRateLimiter();
 app.MapOpenApi();
 app.UseSwagger();
 app.UseSwaggerUI();
+
+// Health probe — no authentication required.
+app.MapGet("/healthz", () => Results.Ok(new { status = "healthy" }))
+   .AllowAnonymous()
+   .WithName("Healthz")
+   .WithTags("Health");
 
 app.MapAccountRoutes().RequireAuthorization();
 app.MapWorkspaceRoutes().RequireAuthorization();

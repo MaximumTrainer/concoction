@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and fill in values before running terraform apply.
+
+aws_region        = "eu-west-2"
+project_name      = "concoction"
+environment       = "prod"
+
+# Full ECR URI — set after first apply + docker push:
+image_uri = "123456789012.dkr.ecr.eu-west-2.amazonaws.com/concoction-prod:latest"
+
+# Sensitive values — use environment variables or a secrets manager:
+db_password       = "CHANGE_ME"
+bootstrap_api_key = "CHANGE_ME"

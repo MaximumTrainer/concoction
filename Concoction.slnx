@@ -5,4 +5,5 @@
   <Project Path="Concoction.Domain/Concoction.Domain.csproj" />
   <Project Path="Concoction.Infrastructure/Concoction.Infrastructure.csproj" />
   <Project Path="Concoction.Tests/Concoction.Tests.csproj" />
+  <Project Path="Concoction.Tests.Smoke/Concoction.Tests.Smoke.csproj" />
 </Solution>
