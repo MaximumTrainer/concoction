@@ -366,7 +366,9 @@ For a prompt like **"Generate a retail DB with 10k orders"**, the end-to-end flo
 **Solution:**
 - only collect aggregated statistics, histograms, category frequencies, embeddings, and null rates
 - fit sampling models from aggregates rather than storing raw rows
-- use k-means clustering or t-SNE/UMAP-style projection offline for shape analysis, then sample from centroids or cluster-conditioned rules in C#
+- use k-means clustering for coarse distribution grouping
+- use t-SNE/UMAP-style projection offline for shape analysis and pattern inspection
+- sample from centroids or cluster-conditioned rules in C# during synthesis
 - apply differential privacy or minimum-threshold suppression for low-frequency categories
 
 ### 3. Cost and Drift in LLM-Based Generation
