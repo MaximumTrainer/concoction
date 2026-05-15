@@ -58,9 +58,21 @@ jobs:
             }
 
             const { owner, repo } = context.repo;
+            const labelColorPalette = [
+              "0e8a16",
+              "1d76db",
+              "5319e7",
+              "d93f0b",
+              "fbca04",
+              "b60205",
+              "0052cc",
+              "006b75"
+            ];
 
             function hashLabelNameToColor(name) {
-              return crypto.createHash("sha256").update(name).digest("hex").slice(0, 6);
+              const hash = crypto.createHash("sha256").update(name).digest("hex");
+              const index = parseInt(hash.slice(0, 8), 16) % labelColorPalette.length;
+              return labelColorPalette[index];
             }
 
             function sanitizeLabels(labels) {
@@ -105,7 +117,21 @@ jobs:
               per_page: 100
             });
 
-            const issuesByTitle = new Map(existingIssues.map(issue => [issue.title, issue]));
+            const issuesByTitle = new Map();
+            const duplicateTitles = new Set();
+
+            for (const issue of existingIssues) {
+              if (issuesByTitle.has(issue.title)) {
+                duplicateTitles.add(issue.title);
+                continue;
+              }
+
+              issuesByTitle.set(issue.title, issue);
+            }
+
+            for (const duplicateTitle of duplicateTitles) {
+              core.warning(`Multiple existing issues share the title "${duplicateTitle}". The workflow will skip updates for this title.`);
+            }
 
             for (const [index, item] of manifest.entries()) {
               if (!item || typeof item !== "object") {
@@ -131,9 +157,28 @@ jobs:
                 await ensureLabel(label);
               }
 
+              if (duplicateTitles.has(title)) {
+                core.warning(`Skipping manifest entry "${title}" because multiple repository issues already use this title.`);
+                continue;
+              }
+
               const existingIssue = issuesByTitle.get(title);
 
               if (existingIssue) {
+                const existingLabels = [...new Set((existingIssue.labels ?? [])
+                  .map(label => typeof label === "string" ? label : label?.name)
+                  .filter(label => typeof label === "string"))]
+                  .sort();
+                const desiredLabels = [...labels].sort();
+                const bodyChanged = existingIssue.body !== body;
+                const labelsChanged = existingLabels.length !== desiredLabels.length
+                  || existingLabels.some((label, labelIndex) => label !== desiredLabels[labelIndex]);
+
+                if (!bodyChanged && !labelsChanged) {
+                  core.notice(`No changes needed for issue #${existingIssue.number}: ${title}`);
+                  continue;
+                }
+
                 await github.rest.issues.update({
                   owner,
                   repo,
