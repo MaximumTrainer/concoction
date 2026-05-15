@@ -161,6 +161,15 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
             return null;
         }
 
+        // JSON path-level strategy: build a nested JSON object instead of dispatching a scalar generator.
+        if (columnRule?.JsonPaths is { Count: > 0 } jsonPaths)
+        {
+            return await JsonObjectGenerator.GenerateAsync(
+                jsonPaths, dispatcher, random,
+                table.QualifiedName, column.Name, rowIndex,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var context = new GeneratorContext(
             table.QualifiedName, column.Name, column.DataKind, rowIndex, rules, row, keyPool);
         var candidate = await dispatcher.GenerateAsync(context, cancellationToken).ConfigureAwait(false);

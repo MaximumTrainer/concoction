@@ -34,4 +34,37 @@ public sealed record ColumnRule
     public int? SeedOffset { get; init; }
 
     public Dictionary<string, double>? Distribution { get; init; }
+
+    /// <summary>
+    /// Path-level strategy overrides for JSON/JSONB columns.
+    /// Each entry targets a dot-notation path within the JSON document (e.g. "$.address.city").
+    /// </summary>
+    public IReadOnlyList<JsonPathRule>? JsonPaths { get; init; }
+}
+
+/// <summary>
+/// Assigns a generation strategy to a specific path within a JSON column.
+/// Path uses dollar-dot notation: "$.field" or "$.parent.child".
+/// Array indexing (e.g. "$.items[0]") is not supported.
+/// </summary>
+public sealed record JsonPathRule
+{
+    /// <summary>
+    /// Dollar-dot path within the JSON document, e.g. "$.email" or "$.address.city".
+    /// </summary>
+    [Required]
+    public required string Path { get; init; }
+
+    /// <summary>
+    /// DataKind name to use for generation (e.g. "Email", "Integer", "Name").
+    /// Defaults to "String" when omitted or unrecognised.
+    /// </summary>
+    public string? Strategy { get; init; }
+
+    /// <summary>Fixed value emitted verbatim for this path; overrides Strategy.</summary>
+    public object? FixedValue { get; init; }
+
+    /// <summary>Probability [0,1] that this path is omitted (null) in the generated document.</summary>
+    [Range(0, 1)]
+    public double? NullRate { get; init; }
 }
