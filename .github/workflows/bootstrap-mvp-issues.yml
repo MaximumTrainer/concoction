@@ -59,7 +59,7 @@ jobs:
 
             const { owner, repo } = context.repo;
 
-            function deriveColorFromLabel(name) {
+            function hashLabelNameToColor(name) {
               return crypto.createHash("sha256").update(name).digest("hex").slice(0, 6);
             }
 
@@ -92,7 +92,7 @@ jobs:
                   owner,
                   repo,
                   name: labelName,
-                  color: deriveColorFromLabel(labelName),
+                  color: hashLabelNameToColor(labelName),
                   description: "Created by the Bootstrap MVP Issues workflow."
                 });
               }
