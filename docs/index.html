@@ -1,147 +1,651 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Concoction — Synthetic Data Platform for .NET</title>
-<style>
-  :root {
-    --navy: #0d1b2a;
-    --navy-light: #1b2e45;
-    --teal: #00b4a0;
-    --teal-dark: #009b8a;
-    --text: #e8edf2;
-    --text-muted: #8fa3b1;
-    --code-bg: #0a1628;
-    --border: #2a3f55;
-    --card-bg: #162032;
-  }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--navy); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
-  a { color: var(--teal); text-decoration: none; }
-  a:hover { text-decoration: underline; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Concoction | Synthetic Data Platform</title>
+  <meta
+    name="description"
+    content="Concoction is a deterministic synthetic data platform for schema-aware generation with referential integrity, compliance profiles, and export pipelines."
+  />
+  <style>
+    :root {
+      --bg: #090d1f;
+      --panel: #101733;
+      --panel-2: #121d42;
+      --border: #25366e;
+      --text: #eef2ff;
+      --muted: #aeb8df;
+      --brand: #4fd1c5;
+      --brand-2: #86efac;
+      --accent: #8b5cf6;
+      --danger: #fb7185;
+      --radius: 16px;
+      --shadow: 0 14px 44px rgba(3, 7, 18, 0.38);
+    }
 
-  /* Nav */
-  nav { background: var(--navy-light); border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center; gap: 2rem; height: 56px; position: sticky; top: 0; z-index: 100; }
-  .nav-brand { font-size: 1.2rem; font-weight: 700; color: var(--teal); letter-spacing: 0.03em; }
-  .nav-links { display: flex; gap: 1.5rem; list-style: none; margin-left: auto; }
-  .nav-links a { color: var(--text-muted); font-size: 0.9rem; }
-  .nav-links a:hover { color: var(--text); text-decoration: none; }
+    * { box-sizing: border-box; }
 
-  /* Hero */
-  .hero { padding: 5rem 2rem 4rem; text-align: center; max-width: 900px; margin: 0 auto; }
-  .hero h1 { font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 800; letter-spacing: -0.02em; color: #fff; margin-bottom: 1rem; }
-  .hero h1 span { color: var(--teal); }
-  .hero p { font-size: 1.25rem; color: var(--text-muted); max-width: 620px; margin: 0 auto 2rem; }
-  .hero-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-bottom: 3rem; }
-  .btn { display: inline-block; padding: 0.7rem 1.8rem; border-radius: 6px; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
-  .btn-primary { background: var(--teal); color: var(--navy); }
-  .btn-primary:hover { background: var(--teal-dark); text-decoration: none; }
-  .btn-secondary { border: 1px solid var(--border); color: var(--text); }
-  .btn-secondary:hover { border-color: var(--teal); color: var(--teal); text-decoration: none; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: Inter, "Segoe UI", Roboto, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(900px 420px at 10% -10%, rgba(79, 209, 197, 0.16), transparent 58%),
+        radial-gradient(1000px 460px at 90% -18%, rgba(139, 92, 246, 0.18), transparent 56%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      scroll-behavior: smooth;
+    }
 
-  /* Code block in hero */
-  .hero-code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; text-align: left; padding: 1.5rem; max-width: 680px; margin: 0 auto; overflow-x: auto; }
-  .hero-code pre { font-family: "Cascadia Code", "Fira Code", "SF Mono", Consolas, monospace; font-size: 0.875rem; line-height: 1.7; }
-  .c-comment { color: #5a7a8a; }
-  .c-cmd { color: var(--teal); }
-  .c-flag { color: #a8d8ea; }
-  .c-val { color: #f6c90e; }
+    a { color: var(--brand); }
 
-  /* Features */
-  .features { padding: 4rem 2rem; max-width: 1100px; margin: 0 auto; }
-  .features h2 { text-align: center; font-size: 1.8rem; margin-bottom: 0.5rem; }
-  .features-sub { text-align: center; color: var(--text-muted); margin-bottom: 3rem; }
-  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
-  .feature-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 1.8rem; }
-  .feature-card .icon { font-size: 2rem; margin-bottom: 0.8rem; }
-  .feature-card h3 { font-size: 1.05rem; margin-bottom: 0.5rem; color: #fff; }
-  .feature-card p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; }
+    .container {
+      width: min(1180px, 92vw);
+      margin: 0 auto;
+    }
 
-  /* Divider */
-  .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+    .site-nav {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(8px);
+      background: rgba(9, 13, 31, 0.82);
+      border-bottom: 1px solid rgba(37, 54, 110, 0.6);
+    }
 
-  /* Footer */
-  footer { padding: 2rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid var(--border); }
-  footer a { color: var(--text-muted); }
-  footer a:hover { color: var(--teal); }
-</style>
+    .site-nav .container {
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .brand {
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .brand span { color: var(--brand); }
+
+    .nav-links {
+      list-style: none;
+      display: flex;
+      gap: 1rem;
+      margin: 0;
+      padding: 0;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.95rem;
+      padding: 0.25rem 0.45rem;
+      border-radius: 8px;
+    }
+
+    .nav-links a:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+
+    .hero {
+      padding: 5rem 0 2.5rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 1.8rem;
+      align-items: stretch;
+    }
+
+    h1 {
+      margin: 0 0 1rem;
+      font-size: clamp(2rem, 4.8vw, 3.7rem);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+    }
+
+    .hero-copy p {
+      margin: 0 0 1.2rem;
+      color: var(--muted);
+      max-width: 60ch;
+      font-size: 1.06rem;
+    }
+
+    .pill-row {
+      display: flex;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+
+    .pill {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.36rem 0.72rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      background: rgba(79, 209, 197, 0.04);
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.7rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.2rem;
+    }
+
+    .btn {
+      display: inline-block;
+      border-radius: 12px;
+      padding: 0.7rem 1rem;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.92rem;
+      transition: transform .16s ease, box-shadow .16s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+
+    .btn-primary {
+      color: #081124;
+      background: linear-gradient(96deg, var(--brand), var(--brand-2));
+      box-shadow: 0 8px 26px rgba(79, 209, 197, 0.35);
+    }
+
+    .btn-secondary {
+      color: var(--text);
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(100px, 1fr));
+      gap: 0.75rem;
+      margin-top: 1.1rem;
+    }
+
+    .stat {
+      background: rgba(16, 23, 51, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.7rem;
+    }
+
+    .stat strong {
+      display: block;
+      color: var(--brand);
+      font-size: 1rem;
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .hero-card {
+      background: linear-gradient(160deg, rgba(18, 29, 66, 0.98), rgba(16, 23, 51, 0.92));
+      border: 1px solid rgba(79, 209, 197, 0.3);
+      border-radius: var(--radius);
+      padding: 1rem;
+      box-shadow: var(--shadow);
+      overflow: auto;
+    }
+
+    .hero-card h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1rem;
+      color: var(--brand);
+    }
+
+    pre {
+      margin: 0;
+      font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+      font-size: 0.82rem;
+      white-space: pre;
+      line-height: 1.65;
+    }
+
+    section {
+      padding: 1.8rem 0;
+    }
+
+    .section-title {
+      margin: 0 0 0.25rem;
+      font-size: 1.8rem;
+      letter-spacing: -0.02em;
+    }
+
+    .section-subtitle {
+      margin: 0 0 1.2rem;
+      color: var(--muted);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.9rem;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+    }
+
+    .card h3 {
+      margin: 0 0 0.45rem;
+      font-size: 1rem;
+      color: #ffffff;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.8rem;
+    }
+
+    .step {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      position: relative;
+      min-height: 136px;
+    }
+
+    .step .num {
+      display: inline-flex;
+      width: 28px;
+      height: 28px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: rgba(79, 209, 197, 0.16);
+      border: 1px solid var(--border);
+      color: var(--brand);
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .step h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.96rem;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .table-wrap {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.74rem 0.85rem;
+      border-bottom: 1px solid rgba(37, 54, 110, 0.65);
+      vertical-align: top;
+      font-size: 0.9rem;
+    }
+
+    th {
+      color: var(--brand);
+      font-weight: 700;
+      background: rgba(18, 29, 66, 0.7);
+    }
+
+    td { color: var(--muted); }
+
+    .ok {
+      color: #22d3ee;
+      font-weight: 700;
+      font-size: 0.8rem;
+    }
+
+    .warn {
+      color: var(--danger);
+      font-weight: 700;
+      font-size: 0.8rem;
+    }
+
+    .starting-points {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.9rem;
+    }
+
+    .start-card {
+      border-radius: var(--radius);
+      padding: 1rem;
+      border: 1px solid var(--border);
+      background: linear-gradient(160deg, rgba(16, 23, 51, 0.95), rgba(9, 13, 31, 0.96));
+    }
+
+    .start-card h3 {
+      margin: 0 0 0.5rem;
+      color: #ffffff;
+      font-size: 1rem;
+    }
+
+    .start-card p {
+      margin: 0 0 0.65rem;
+      color: var(--muted);
+      font-size: 0.89rem;
+    }
+
+    .start-card ul {
+      margin: 0;
+      padding-left: 1rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .start-card li { margin-bottom: 0.32rem; }
+
+    footer {
+      margin-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      padding: 1.3rem 0 2.2rem;
+      font-size: 0.88rem;
+    }
+
+    footer .container {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 1020px) {
+      .hero-grid,
+      .cards,
+      .steps,
+      .starting-points {
+        grid-template-columns: 1fr;
+      }
+
+      .site-nav .container {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 0.7rem 0;
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html, body {
+        scroll-behavior: auto;
+      }
+
+      .btn,
+      .nav-links a {
+        transition: none;
+      }
+
+      .btn:hover {
+        transform: none;
+      }
+    }
+  </style>
 </head>
 <body>
-<nav>
-  <span class="nav-brand">⚗ Concoction</span>
-  <ul class="nav-links">
-    <li><a href="user-guide.html">User Guide</a></li>
-    <li><a href="how-to/cli-quickstart.html">CLI</a></li>
-    <li><a href="how-to/rules-dsl.html">Rules DSL</a></li>
-    <li><a href="how-to/compliance-profiles.html">Compliance</a></li>
-    <li><a href="how-to/rest-api.html">API</a></li>
-    <li><a href="how-to/typescript-sdk.html">TypeScript SDK</a></li>
-    <li><a href="https://github.com/MaximumTrainer/concoction">GitHub</a></li>
-  </ul>
-</nav>
+  <header class="site-nav">
+    <div class="container">
+      <a class="brand" href="#top">⚗ <span>Concoction</span></a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#teams">Teams</a></li>
+        <li><a href="#data-breakdown">Data Breakdown</a></li>
+        <li><a href="#start">Get Started</a></li>
+        <li><a href="user-guide.html">User Guide</a></li>
+        <li><a href="https://github.com/MaximumTrainer/synthetic-concoction">GitHub</a></li>
+      </ul>
+    </div>
+  </header>
 
-<section class="hero">
-  <h1>Synthetic data that <span>respects your schema</span></h1>
-  <p>Concoction discovers your database, generates realistic relational data with full referential integrity, and exports it in CSV, JSON, and SQL — deterministically, every time.</p>
-  <div class="hero-actions">
-    <a href="how-to/cli-quickstart.html" class="btn btn-primary">Get Started</a>
-    <a href="user-guide.html" class="btn btn-secondary">Read the Docs</a>
-    <a href="https://github.com/MaximumTrainer/concoction" class="btn btn-secondary">GitHub</a>
-  </div>
-  <div class="hero-code">
-    <pre><span class="c-comment"># Discover schema, generate 100 rows, export CSV + JSON + SQL</span>
-<span class="c-cmd">dotnet run</span> <span class="c-flag">--project</span> ./Concoction.Cli -- generate \
-  <span class="c-flag">--provider</span>    <span class="c-val">sqlite</span> \
-  <span class="c-flag">--connection</span>  <span class="c-val">"Data Source=./mydb.db"</span> \
-  <span class="c-flag">--seed</span>        <span class="c-val">42</span> \
-  <span class="c-flag">--rows</span>        <span class="c-val">100</span> \
-  <span class="c-flag">--rules</span>       <span class="c-val">./rules.yaml</span> \
-  <span class="c-flag">--output</span>      <span class="c-val">./artifacts</span></pre>
-  </div>
-</section>
+  <main id="top" class="container">
+    <section class="hero">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <div class="pill-row">
+            <span class="pill">.NET 10</span>
+            <span class="pill">Deterministic Seeding</span>
+            <span class="pill">SQLite + PostgreSQL</span>
+            <span class="pill">CLI + REST API + TypeScript SDK</span>
+          </div>
+          <h1>Synthetic data generation designed for modern engineering teams.</h1>
+          <p>
+            Concoction discovers your database schema, generates realistic relational datasets,
+            enforces referential integrity, and exports production-safe synthetic data in repeatable runs.
+          </p>
+          <div class="actions">
+            <a class="btn btn-primary" href="how-to/cli-quickstart.html">Start with CLI Quickstart</a>
+            <a class="btn btn-secondary" href="how-to/rest-api.html">Explore REST API</a>
+            <a class="btn btn-secondary" href="how-to/typescript-sdk.html">Use TypeScript SDK</a>
+          </div>
+          <div class="stats" aria-label="project highlights">
+            <div class="stat"><strong>81 tests</strong><span>xUnit + FluentAssertions</span></div>
+            <div class="stat"><strong>3 export formats</strong><span>CSV, JSON, SQL</span></div>
+            <div class="stat"><strong>5 CLI commands</strong><span>discover, discover-profile, generate, validate, export</span></div>
+          </div>
+        </div>
+        <aside class="hero-card" aria-label="CLI example">
+          <h2>Team-friendly deterministic run</h2>
+<pre>dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- generate \
+  --provider sqlite \
+  --connection "Data Source=./sample.db" \
+  --database sample \
+  --seed 42 \
+  --rows 100 \
+  --rules ./rules.yaml \
+  --compliance-profile Default \
+  --output ./artifacts
 
-<hr class="divider">
+# Repeat with the same seed to reproduce the same dataset.</pre>
+        </aside>
+      </div>
+    </section>
 
-<section class="features">
-  <h2>Everything you need for realistic test data</h2>
-  <p class="features-sub">.NET 10 &bull; 81 tests passing &bull; MIT licence</p>
-  <div class="features-grid">
-    <div class="feature-card">
-      <div class="icon">🔍</div>
-      <h3>Schema-Aware</h3>
-      <p>Automatically discovers tables, columns, primary keys, foreign keys, unique constraints, and indexes from live SQLite and PostgreSQL databases.</p>
-    </div>
-    <div class="feature-card">
-      <div class="icon">🎲</div>
-      <h3>Deterministic</h3>
-      <p>Every generation run is reproducible. Pass <code>--seed 42</code> and get the same dataset every time — ideal for CI/CD pipelines and fixture snapshots.</p>
-    </div>
-    <div class="feature-card">
-      <div class="icon">🔗</div>
-      <h3>Referential Integrity</h3>
-      <p>Topological sort ensures parent tables are populated before child tables. FK values always reference real rows. Self-referencing tables get a safe chain structure.</p>
-    </div>
-    <div class="feature-card">
-      <div class="icon">📋</div>
-      <h3>Rules DSL</h3>
-      <p>Override generation strategies with a YAML or JSON rules file. Pin fixed values, set null rates, apply weighted distributions, and target nested JSON paths.</p>
-    </div>
-    <div class="feature-card">
-      <div class="icon">🌐</div>
-      <h3>REST API</h3>
-      <p>Full multi-tenant REST API built with ASP.NET Core Minimal API. Accounts, workspaces, projects, runs, workflows, chat, and API key management — all behind Swagger UI.</p>
-    </div>
-    <div class="feature-card">
-      <div class="icon">📦</div>
-      <h3>TypeScript SDK</h3>
-      <p>Install <code>@concoction/client</code> for a fully-typed client that covers every REST endpoint, with <code>pollRun</code> for long-running workflow tracking.</p>
-    </div>
-  </div>
-</section>
+    <section id="features">
+      <h2 class="section-title">What Concoction is</h2>
+      <p class="section-subtitle">A schema-aware synthetic data platform focused on realistic outputs, team workflows, and controlled reproducibility.</p>
+      <div class="cards">
+        <article class="card">
+          <h3>Schema Discovery</h3>
+          <p>Read-only discovery captures tables, columns, keys, foreign keys, unique constraints, and indexes from SQLite or PostgreSQL.</p>
+        </article>
+        <article class="card">
+          <h3>Referential Integrity Engine</h3>
+          <p>Topological planning and cycle diagnostics ensure parent/child generation order and safe handling of self-referencing tables.</p>
+        </article>
+        <article class="card">
+          <h3>Policy & Governance</h3>
+          <p>Rules DSL, compliance profiles, and validation checks provide control over generated data quality and sensitivity behavior.</p>
+        </article>
+      </div>
+    </section>
 
-<footer>
-  <p>© 2024 Concoction contributors &bull; MIT Licence &bull; <a href="https://github.com/MaximumTrainer/concoction">github.com/MaximumTrainer/concoction</a></p>
-</footer>
+    <section id="teams">
+      <h2 class="section-title">How teams use it</h2>
+      <p class="section-subtitle">A practical flow from discovery to synthetic dataset delivery across local development, CI pipelines, and test environments.</p>
+      <div class="steps" aria-label="team workflow">
+        <article class="step">
+          <span class="num">1</span>
+          <h3>Discover</h3>
+          <p>Connect to a source database and inspect schema shape using <code>discover</code> or <code>discover-profile</code>.</p>
+        </article>
+        <article class="step">
+          <span class="num">2</span>
+          <h3>Define Rules</h3>
+          <p>Apply per-table and per-column generation overrides via YAML/JSON rules and optional compliance profiles.</p>
+        </article>
+        <article class="step">
+          <span class="num">3</span>
+          <h3>Generate & Validate</h3>
+          <p>Run deterministic generation with row targets and validate referential integrity, nullability, and uniqueness constraints.</p>
+        </article>
+        <article class="step">
+          <span class="num">4</span>
+          <h3>Export & Integrate</h3>
+          <p>Ship outputs as CSV/JSON/SQL and integrate via CLI, REST endpoints, or the TypeScript SDK for automation.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="data-breakdown">
+      <h2 class="section-title">Implemented data features breakdown</h2>
+      <p class="section-subtitle">Current feature coverage based on the platform documentation and implemented interfaces.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Implemented capabilities</th>
+              <th>Status</th>
+              <th>Learn more</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Schema ingestion</td>
+              <td>SQLite and PostgreSQL introspection of tables, columns, PK/FK relations, unique constraints, indexes, and diagnostics.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="user-guide.html#discovery">Schema Discovery</a></td>
+            </tr>
+            <tr>
+              <td>Generation planning</td>
+              <td>Topological ordering, cycle detection, and self-referencing table handling before row generation starts.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="user-guide.html#plan">Generation Plan</a></td>
+            </tr>
+            <tr>
+              <td>Data kind system</td>
+              <td>Primitive and semantic <code>DataKind</code> mapping including email, names, URLs, phone, date/time, numeric, GUID, JSON, and binary.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="user-guide.html#datakinds">Data Kinds</a></td>
+            </tr>
+            <tr>
+              <td>Rules DSL</td>
+              <td>YAML/JSON rules for strategy overrides, fixed values, null rates, seed offsets, weighted distributions, and JSON path overrides.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="how-to/rules-dsl.html">Rules DSL How-To</a></td>
+            </tr>
+            <tr>
+              <td>Compliance behavior</td>
+              <td>Profile-based sensitive field handling for default, healthcare, and finance scenarios.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="how-to/compliance-profiles.html">Compliance Profiles</a></td>
+            </tr>
+            <tr>
+              <td>Validation engine</td>
+              <td>Post-generation checks for FK integrity, nullability, uniqueness, and issue reporting with non-zero exits for failing runs.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="user-guide.html#validation">Validation</a></td>
+            </tr>
+            <tr>
+              <td>Export pipeline</td>
+              <td>Artifact output to CSV, JSON, SQL INSERT files, plus run summary metadata.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="user-guide.html#exports">Exports</a></td>
+            </tr>
+            <tr>
+              <td>Team interfaces</td>
+              <td>CLI command suite, authenticated REST API, and typed TypeScript SDK with polling helpers.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="how-to/rest-api.html">REST API</a> / <a href="how-to/typescript-sdk.html">SDK</a></td>
+            </tr>
+            <tr>
+              <td>Platform services</td>
+              <td>Accounts, workspaces, projects, runs, workflows, API keys, and agent chat endpoints for multi-tenant usage.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="user-guide.html#platform">Platform guide</a></td>
+            </tr>
+            <tr>
+              <td>Deployment website</td>
+              <td>Static docs site published by GitHub Pages from <code>/docs</code> via GitHub Actions.</td>
+              <td><span class="ok">Implemented</span></td>
+              <td><a href="https://github.com/MaximumTrainer/synthetic-concoction/actions">Actions</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="start">
+      <h2 class="section-title">Where to get started</h2>
+      <p class="section-subtitle">Choose the entry point that matches your team workflow and integration path.</p>
+      <div class="starting-points">
+        <article class="start-card">
+          <h3>CLI First</h3>
+          <p>Best for local developer workflows and CI scripting.</p>
+          <ul>
+            <li><a href="how-to/cli-quickstart.html">CLI Quickstart</a></li>
+            <li><a href="how-to/rules-dsl.html">Rules DSL</a></li>
+            <li><a href="user-guide.html#validation">Validation model</a></li>
+          </ul>
+        </article>
+        <article class="start-card">
+          <h3>API Platform</h3>
+          <p>Best for service-level orchestration and central platform usage.</p>
+          <ul>
+            <li><a href="how-to/rest-api.html">REST API reference</a></li>
+            <li><a href="user-guide.html#platform">Multi-tenant concepts</a></li>
+            <li><a href="user-guide.html#apikeys">API key management</a></li>
+          </ul>
+        </article>
+        <article class="start-card">
+          <h3>Frontend/Node Integration</h3>
+          <p>Best for app-level automation and typed API clients.</p>
+          <ul>
+            <li><a href="how-to/typescript-sdk.html">TypeScript SDK guide</a></li>
+            <li><a href="https://www.npmjs.com/package/@concoction/client">@concoction/client</a></li>
+            <li><a href="user-guide.html">Full user guide</a></li>
+          </ul>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>Concoction • Deterministic synthetic data for teams.</span>
+      <span>
+        <a href="https://github.com/MaximumTrainer/synthetic-concoction">GitHub repository</a>
+        ·
+        <a href="user-guide.html">Documentation</a>
+      </span>
+    </div>
+  </footer>
 </body>
 </html>
