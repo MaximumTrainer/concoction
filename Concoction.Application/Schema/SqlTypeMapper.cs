@@ -33,6 +33,29 @@ public static class SqlTypeMapper
         ["bytea"] = DataKind.Binary
     };
 
+    private static readonly HashSet<string> UnknownTypes = new(StringComparer.OrdinalIgnoreCase);
+
     public static DataKind MapToDataKind(string sqlType)
-        => Map.TryGetValue(sqlType.Trim(), out var dataKind) ? dataKind : DataKind.Unknown;
+    {
+        var normalized = sqlType.Trim();
+        if (Map.TryGetValue(normalized, out var dataKind))
+        {
+            return dataKind;
+        }
+
+        lock (UnknownTypes)
+        {
+            UnknownTypes.Add(normalized);
+        }
+
+        return DataKind.Unknown;
+    }
+
+    public static IReadOnlyList<string> GetUnknownTypeDiagnostics()
+    {
+        lock (UnknownTypes)
+        {
+            return UnknownTypes.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+    }
 }

@@ -74,7 +74,7 @@ public sealed class SqliteSchemaProvider(IOptions<SchemaProviderOptions> options
                     null,
                     null,
                     defaultValue,
-                    null));
+                    AllowedValues: null));
             }
         }
 

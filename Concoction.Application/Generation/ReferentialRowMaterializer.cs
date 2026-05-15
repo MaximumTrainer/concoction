@@ -115,6 +115,8 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
             return candidate;
         }
 
-        throw new InvalidOperationException($"Unable to generate unique value for {table.QualifiedName}.{column.Name} after {maxAttempts} attempts.");
+        throw new InvalidOperationException(
+            $"Unable to generate unique value for {table.QualifiedName}.{column.Name} after {maxAttempts} attempts. " +
+            "Adjust uniqueness rules, row counts, or generator strategy for this column.");
     }
 }
