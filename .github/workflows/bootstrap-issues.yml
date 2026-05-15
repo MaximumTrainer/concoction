@@ -48,6 +48,7 @@ jobs:
           import os
           import json
           import sys
+          import urllib.parse
           import urllib.request
           import urllib.error
           import yaml
@@ -90,8 +91,6 @@ jobs:
                   else:
                       raise
 
-          import urllib.parse
-
           # ── load payload ──────────────────────────────────────────────────────────
           with open(filepath, "r") as fh:
               data = yaml.safe_load(fh)
@@ -99,7 +98,7 @@ jobs:
           issues = data.get("issues", [])
           print(f"Loaded {len(issues)} issue(s) from {filepath}")
 
-          # ── fetch existing issue titles (first 200) ───────────────────────────────
+          # ── fetch existing issue titles (up to 300; pragmatic MVP limit) ───────────
           existing_titles = set()
           for page in range(1, 4):
               items = gh_get(f"{api_base}/issues?state=all&per_page=100&page={page}")
