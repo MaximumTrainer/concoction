@@ -13,6 +13,12 @@ Each module is self-contained and deploys:
 
 Post-deployment smoke tests run automatically via a `null_resource` provisioner after each `terraform apply`.
 
+For detailed per-cloud step-by-step guides see:
+
+- 📖 [AWS Setup Guide](aws/SETUP.md) — ECS Fargate · ALB · RDS · ECR · Secrets Manager
+- 📖 [Azure Setup Guide](azure/SETUP.md) — Container Apps · PostgreSQL Flexible · ACR · Key Vault
+- 📖 [GCP Setup Guide](gcp/SETUP.md) — Cloud Run · Cloud SQL · Artifact Registry · Secret Manager
+
 ---
 
 ## Prerequisites
