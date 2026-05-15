@@ -1,0 +1,253 @@
+issues:
+  - title: "feat: Establish Hexagonal Solution Skeleton and DI Composition Root"
+    labels:
+      - architecture
+      - good first issue
+    body: |
+      ## User Story
+      As a Concoction maintainer, I want a clean Hexagonal Architecture project skeleton with dependency injection, so that new features can be added without coupling domain logic to infrastructure.
+
+      ## Technical Requirements
+      - Create/confirm projects: `Concoction.Domain`, `Concoction.Application`, `Concoction.Infrastructure`, `Concoction.Cli` (or API host), `Concoction.Tests`.
+      - Define application ports as interfaces (e.g., `ISchemaReader`, `IProfileReader`, `IValueGenerator`, `IExporter`).
+      - Register adapters in composition root using `Microsoft.Extensions.DependencyInjection`.
+      - Enforce inward dependencies only (Domain ← Application ← Infrastructure/Presentation).
+      - Add architecture tests to guard layer boundaries (e.g., using NetArchTest or ArchUnitNET).
+
+      ## Acceptance Criteria
+      - [ ] Solution builds on .NET 10 with all projects wired.
+      - [ ] Domain has no references to Infrastructure or host projects.
+      - [ ] DI registration resolves all core ports at runtime.
+      - [ ] Architecture test fails on forbidden cross-layer references.
+
+  - title: "feat: Implement PostgreSQL Schema Discovery Adapter"
+    labels:
+      - schema-discovery
+      - infrastructure
+    body: |
+      ## User Story
+      As a data engineer, I want Concoction to discover PostgreSQL schema metadata automatically, so that synthetic generation plans can be derived from real structures.
+
+      ## Technical Requirements
+      - Implement `ISchemaReader` in the Infrastructure layer using `Npgsql` + `Dapper`.
+      - Read tables, columns, PK/FK, identity/defaults, nullability, and constraints from `information_schema`/`pg_catalog`.
+      - Map results into strongly typed domain models (`DatabaseModel`, `EntityModel`, `ColumnModel`, `ForeignKeyEdge`).
+      - Use async data access (`await`, `CancellationToken`) and `IAsyncEnumerable` where possible.
+      - Add integration tests with Testcontainers (PostgreSQL).
+
+      ## Acceptance Criteria
+      - [ ] Adapter returns a complete schema graph for a sample database.
+      - [ ] FK relations are correctly captured in the typed domain model.
+      - [ ] Discovery runs asynchronously and honours cancellation.
+      - [ ] Integration tests pass against a containerised PostgreSQL instance.
+
+  - title: "feat: Add Privacy-Safe Profiling for Aggregate Distributions"
+    labels:
+      - compliance
+      - profiling
+    body: |
+      ## User Story
+      As a compliance officer, I want only aggregate profiling statistics collected from source data, so that generated data preserves statistical realism without exposing source PII.
+
+      ## Technical Requirements
+      - Define `IProfileReader` port returning aggregate-only profile DTOs.
+      - Compute per-column: null-rate, min/max, frequency buckets, and distinct cardinality.
+      - Never persist raw source rows; enforce a minimum-count suppression threshold for low-frequency categories.
+      - Add policy configuration for GDPR/HIPAA-safe profiling behaviour.
+      - Implement unit tests that verify suppression and the absence of raw-row payloads.
+
+      ## Acceptance Criteria
+      - [ ] Profiling output contains only aggregate metrics — no raw records.
+      - [ ] Low-frequency categories are suppressed per configurable threshold.
+      - [ ] No raw record payloads appear in logs, traces, or persisted stores.
+      - [ ] Tests validate data minimisation behaviour.
+
+  - title: "feat: Build Typed Generation Plan Composer"
+    labels:
+      - planning
+      - application
+    body: |
+      ## User Story
+      As an operator, I want schema and profile data converted into a deterministic generation plan, so that runs are auditable and fully reproducible.
+
+      ## Technical Requirements
+      - Introduce immutable records: `GenerationPlan`, `EntityPlan`, `FieldStrategy`, `GenerationStep`.
+      - Implement `IGenerationPlanComposer` in the Application layer.
+      - Encode `DependsOn` lists and row count targets per entity.
+      - Persist plans with immutable versioning and timestamp metadata.
+      - Add unit tests asserting determinism: same inputs + seed → identical plan.
+
+      ## Acceptance Criteria
+      - [ ] Composer outputs strongly typed plans from schema/profile inputs.
+      - [ ] Same inputs and seed always produce identical plan output.
+      - [ ] Plan captures dependency graph, sequencing, and per-field strategies.
+      - [ ] Unit tests cover deterministic and edge-case plan composition.
+
+  - title: "feat: Implement Seeded Rule-Based Value Generators"
+    labels:
+      - generation-engine
+      - bogus
+    body: |
+      ## User Story
+      As a QA engineer, I want deterministic value generators for common data types, so that test datasets are realistic and reproducible across runs.
+
+      ## Technical Requirements
+      - Implement `IValueGenerator` abstractions with Bogus-backed adapters.
+      - Support generator families: blank/null, boolean, constant, integer/decimal/float ranges, text/lorem, array, and nested-object structures.
+      - Derive per-column seeds from a global seed combined with entity/column hash.
+      - Validate outputs against column constraints (length, nullability, enums, ranges).
+      - Include property-based tests for determinism and schema conformance.
+
+      ## Acceptance Criteria
+      - [ ] All supported primitive and composite generators produce valid outputs.
+      - [ ] Same seed and config always produce the same sequence of values.
+      - [ ] Generator output respects nullability and bounds constraints.
+      - [ ] Automated tests verify determinism and constraint compliance.
+
+  - title: "feat: Implement Referential Integrity Planner via Topological Sort"
+    labels:
+      - referential-integrity
+      - application
+    body: |
+      ## User Story
+      As a developer, I want insertion order computed from FK dependencies, so that generated datasets load into a target database without foreign key violations.
+
+      ## Technical Requirements
+      - Add a graph-builder service in the Application layer from `ForeignKeyEdge` data.
+      - Implement Kahn's algorithm for topological ordering of entity nodes.
+      - Group independent nodes into parallelisable insertion batches.
+      - Expose typed diagnostics for detected cycles and unreachable nodes.
+      - Unit test with acyclic, branching, and multi-root schemas.
+
+      ## Acceptance Criteria
+      - [ ] Planner outputs a valid insertion order for all acyclic schemas.
+      - [ ] Independent entities are grouped into parallel-safe batches.
+      - [ ] Diagnostics include cycle details and dependency information.
+      - [ ] No FK violations occur in integration load tests for acyclic samples.
+
+  - title: "feat: Add Cycle and Self-Reference Handling via Two-Phase Insert Strategy"
+    labels:
+      - referential-integrity
+      - infrastructure
+    body: |
+      ## User Story
+      As a data engineer, I want cyclic and self-referencing FK relationships handled safely, so that complex schemas can be synthesised with full referential integrity.
+
+      ## Technical Requirements
+      - Implement cycle resolution in the plan: phase 1 inserts with nullable FK placeholders, phase 2 backfill updates.
+      - Define `IRelationalDialect` provider capability contract (deferred constraints, bulk insert, identity behaviour).
+      - Implement PostgreSQL dialect first; design for SQL Server and MySQL extension.
+      - Surface cycle-handling decisions explicitly in plan metadata for auditability.
+      - Add integration tests with self-referencing and mutual-FK schemas.
+
+      ## Acceptance Criteria
+      - [ ] Cyclic schemas produce executable two-phase plan steps.
+      - [ ] Backfill phase resolves placeholder FKs to valid values.
+      - [ ] Plan records cycle decisions and the strategy selected.
+      - [ ] Integration tests confirm that the final dataset passes all FK checks.
+
+  - title: "feat: Build Async Generation Executor with Resumable Step State"
+    labels:
+      - execution
+      - resilience
+    body: |
+      ## User Story
+      As an operator, I want generation steps executed asynchronously with retry and resume support, so that large jobs complete reliably even in the presence of transient failures.
+
+      ## Technical Requirements
+      - Implement `IGenerationExecutor` orchestrating `GenerationStep` execution using `async/await` and `CancellationToken`.
+      - Add a persisted run state machine: `Pending → Running → Failed → Completed`.
+      - Support chunked row generation per entity and configurable bounded concurrency.
+      - Integrate Polly for retry policies on transient adapter failures.
+      - Expose resume semantics keyed by run ID.
+
+      ## Acceptance Criteria
+      - [ ] Executor processes plan steps asynchronously in dependency order.
+      - [ ] Transient failures retry according to the configured Polly policy.
+      - [ ] Interrupted runs resume from the last persisted step state.
+      - [ ] Concurrency limits are configurable and covered by tests.
+
+  - title: "feat: Implement Dataset Validation Pipeline"
+    labels:
+      - validation
+      - quality
+    body: |
+      ## User Story
+      As a release engineer, I want generated datasets automatically validated before export, so that test environments receive trustworthy, constraint-compliant synthetic data.
+
+      ## Technical Requirements
+      - Define `IValidationService` with validator implementations: FK integrity, uniqueness, nullability, and statistical drift.
+      - Compare generated column distributions against profile baselines with configurable tolerance thresholds.
+      - Emit a structured `ValidationReport` per run.
+      - Run validation as the final pipeline stage; block export on critical violations.
+      - Add integration tests covering pass and failure scenarios.
+
+      ## Acceptance Criteria
+      - [ ] A `ValidationReport` is generated for every run.
+      - [ ] FK violations, uniqueness conflicts, and nullability breaches are detected.
+      - [ ] Distribution drift beyond tolerance threshold fails validation.
+      - [ ] Export is blocked when the validation report contains critical failures.
+
+  - title: "feat: Deliver MVP Exporters for SQL and CSV Formats"
+    labels:
+      - export
+      - mvp
+    body: |
+      ## User Story
+      As a tester, I want SQL and CSV export outputs, so that synthetic datasets can be loaded directly into target environments or inspected offline.
+
+      ## Technical Requirements
+      - Define an `IExporter` port with concrete implementations for SQL and CSV.
+      - SQL exporter emits dialect-aware `INSERT` scripts (PostgreSQL first) via `IRelationalDialect`.
+      - CSV exporter uses `CsvHelper` with typed mappings and invariant culture formatting.
+      - Support streaming writes for large outputs using async file I/O.
+      - Produce an export manifest with artifact paths, row counts, and SHA-256 checksums.
+
+      ## Acceptance Criteria
+      - [ ] SQL artifacts import successfully into a PostgreSQL test database.
+      - [ ] CSV files are generated per entity with correct headers and row counts.
+      - [ ] Export operations are fully asynchronous and memory-safe for large datasets.
+      - [ ] Export manifest includes correct metadata and integrity checksums.
+
+  - title: "feat: Add OpenTelemetry Tracing, Metrics, and Structured Logging"
+    labels:
+      - observability
+      - telemetry
+    body: |
+      ## User Story
+      As a platform engineer, I want end-to-end telemetry for fabrication runs, so that performance bottlenecks and failures are diagnosable across the full pipeline.
+
+      ## Technical Requirements
+      - Instrument all major stages: prompt intake, schema discovery, plan composition, generation, validation, and export.
+      - Propagate a single `FabricationRunId` correlation ID through HTTP requests, agent sessions, background messages, worker spans, and export artifacts.
+      - Emit key metrics: rows/sec, queue depth, retry counts, failed steps, validation violations, and semantic generation latency.
+      - Use Serilog for structured logging with sensitive-data redaction middleware.
+      - Provide OTLP exporter wiring and example dashboard/query documentation.
+
+      ## Acceptance Criteria
+      - [ ] A single run is traceable end-to-end across all major pipeline stages.
+      - [ ] All required metrics are emitted and queryable via an OTLP sink.
+      - [ ] Logs contain `FabricationRunId` correlation IDs and no sensitive payloads.
+      - [ ] Telemetry integration tests verify span and metric emission paths.
+
+  - title: "feat: Create Minimal CLI/API Surface for Run Lifecycle Management"
+    labels:
+      - cli
+      - api
+      - mvp
+    body: |
+      ## User Story
+      As a developer, I want a simple CLI and/or API interface to create plans, start runs, check status, and retrieve export artifacts, so that Concoction can be integrated into CI test workflows.
+
+      ## Technical Requirements
+      - Implement commands/endpoints: `plan`, `run`, `status`, `validate`, `export`.
+      - Use strongly typed request/response contracts serialised with `System.Text.Json`.
+      - Enforce input validation and return RFC 7807 Problem Details on errors.
+      - All public operations must be asynchronous and support cancellation.
+      - Add end-to-end tests covering the full run lifecycle.
+
+      ## Acceptance Criteria
+      - [ ] A plan can be created and executed via CLI/API.
+      - [ ] Status command/endpoint returns deterministic run progress state.
+      - [ ] Artifact metadata and download paths are retrievable post-run.
+      - [ ] End-to-end tests verify the complete lifecycle from plan creation to export.
