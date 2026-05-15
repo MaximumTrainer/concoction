@@ -88,6 +88,49 @@ jobs:
               )];
             }
 
+            function normalizeManifestId(value) {
+              return typeof value === "string" ? value.trim() : "";
+            }
+
+            function sanitizeTitleAliases(titles) {
+              if (!Array.isArray(titles)) {
+                return [];
+              }
+
+              return [...new Set(
+                titles
+                  .filter(title => typeof title === "string")
+                  .map(title => title.trim())
+                  .filter(title => title.length > 0)
+              )];
+            }
+
+            function manifestIdMarker(manifestId) {
+              return `<!-- issue-manifest-id: ${manifestId} -->`;
+            }
+
+            function appendManifestIdMarker(body, manifestId) {
+              if (!manifestId) {
+                return body;
+              }
+
+              const marker = manifestIdMarker(manifestId);
+              if (body.includes(marker)) {
+                return body;
+              }
+
+              return `${body.trimEnd()}\n\n${marker}\n`;
+            }
+
+            function extractManifestId(body) {
+              if (typeof body !== "string") {
+                return "";
+              }
+
+              const match = body.match(/<!--\s*issue-manifest-id:\s*([^\s>]+)\s*-->/i);
+              return match ? match[1].trim() : "";
+            }
+
             async function ensureLabel(labelName) {
               try {
                 await github.rest.issues.getLabel({
@@ -119,8 +162,19 @@ jobs:
 
             const issuesByTitle = new Map();
             const duplicateTitles = new Set();
+            const issuesByManifestId = new Map();
+            const duplicateManifestIds = new Set();
 
             for (const issue of existingIssues) {
+              const existingManifestId = extractManifestId(issue.body);
+              if (existingManifestId) {
+                if (issuesByManifestId.has(existingManifestId)) {
+                  duplicateManifestIds.add(existingManifestId);
+                } else {
+                  issuesByManifestId.set(existingManifestId, issue);
+                }
+              }
+
               if (issuesByTitle.has(issue.title)) {
                 duplicateTitles.add(issue.title);
                 continue;
@@ -133,59 +187,124 @@ jobs:
               core.warning(`Multiple existing issues share the title "${duplicateTitle}". The workflow will skip updates for this title.`);
             }
 
+            for (const duplicateManifestId of duplicateManifestIds) {
+              core.warning(`Multiple existing issues share the manifest id "${duplicateManifestId}". The workflow will skip updates for this manifest entry.`);
+            }
+
+            const seenManifestIds = new Set();
+            const claimedIssueNumbers = new Set();
+            const supersededLegacyIssueNumbers = new Set();
+
             for (const [index, item] of manifest.entries()) {
               if (!item || typeof item !== "object") {
                 core.warning(`Skipping manifest entry ${index}: expected an object.`);
                 continue;
               }
 
+              const manifestId = normalizeManifestId(item.id);
               const title = typeof item.title === "string" ? item.title.trim() : "";
-              const body = typeof item.body === "string" ? item.body : "";
+              const rawBody = typeof item.body === "string" ? item.body : "";
+              const body = appendManifestIdMarker(rawBody, manifestId);
               const labels = sanitizeLabels(item.labels);
+              const replacesTitles = sanitizeTitleAliases(item.replacesTitles);
 
               if (!title) {
                 core.warning(`Skipping manifest entry ${index}: missing title.`);
                 continue;
               }
 
-              if (!body.trim()) {
+              if (!rawBody.trim()) {
                 core.warning(`Skipping manifest entry "${title}": missing body.`);
                 continue;
+              }
+
+              if (manifestId) {
+                if (seenManifestIds.has(manifestId)) {
+                  core.warning(`Skipping manifest entry "${title}" because manifest id "${manifestId}" is duplicated in the manifest.`);
+                  continue;
+                }
+
+                if (duplicateManifestIds.has(manifestId)) {
+                  core.warning(`Skipping manifest entry "${title}" because multiple repository issues already use manifest id "${manifestId}".`);
+                  continue;
+                }
+
+                seenManifestIds.add(manifestId);
               }
 
               for (const label of labels) {
                 await ensureLabel(label);
               }
 
-              if (duplicateTitles.has(title)) {
+              if (!manifestId && duplicateTitles.has(title)) {
                 core.warning(`Skipping manifest entry "${title}" because multiple repository issues already use this title.`);
                 continue;
               }
 
-              const existingIssue = issuesByTitle.get(title);
+              let existingIssue = manifestId ? issuesByManifestId.get(manifestId) : undefined;
+
+              if (!existingIssue && !duplicateTitles.has(title)) {
+                existingIssue = issuesByTitle.get(title);
+              }
+
+              if (!existingIssue) {
+                for (const legacyTitle of replacesTitles) {
+                  if (duplicateTitles.has(legacyTitle)) {
+                    core.warning(`Legacy title "${legacyTitle}" for manifest entry "${title}" matched multiple issues and will be ignored.`);
+                    continue;
+                  }
+
+                  const legacyIssue = issuesByTitle.get(legacyTitle);
+                  if (!legacyIssue || claimedIssueNumbers.has(legacyIssue.number)) {
+                    continue;
+                  }
+
+                  existingIssue = legacyIssue;
+                  break;
+                }
+              }
 
               if (existingIssue) {
+                claimedIssueNumbers.add(existingIssue.number);
+
+                for (const legacyTitle of replacesTitles) {
+                  if (legacyTitle === existingIssue.title || duplicateTitles.has(legacyTitle)) {
+                    continue;
+                  }
+
+                  const legacyIssue = issuesByTitle.get(legacyTitle);
+                  if (legacyIssue) {
+                    supersededLegacyIssueNumbers.add(legacyIssue.number);
+                  }
+                }
+
                 const existingLabels = [...new Set((existingIssue.labels ?? [])
                   .map(label => typeof label === "string" ? label : label?.name)
                   .filter(label => typeof label === "string"))]
                   .sort();
                 const desiredLabels = [...labels].sort();
+                const titleChanged = existingIssue.title !== title;
                 const bodyChanged = existingIssue.body !== body;
                 const labelsChanged = existingLabels.length !== desiredLabels.length
                   || existingLabels.some((label, labelIndex) => label !== desiredLabels[labelIndex]);
 
-                if (!bodyChanged && !labelsChanged) {
+                if (!titleChanged && !bodyChanged && !labelsChanged) {
                   core.notice(`No changes needed for issue #${existingIssue.number}: ${title}`);
                   continue;
                 }
 
-                await github.rest.issues.update({
+                const updatedIssue = await github.rest.issues.update({
                   owner,
                   repo,
                   issue_number: existingIssue.number,
+                  title,
                   body,
                   labels
                 });
+
+                if (manifestId) {
+                  issuesByManifestId.set(manifestId, updatedIssue.data);
+                }
 
                 core.notice(`Updated issue #${existingIssue.number}: ${title}`);
                 continue;
@@ -199,6 +318,30 @@ jobs:
                 labels
               });
 
+              claimedIssueNumbers.add(createdIssue.data.number);
+              if (manifestId) {
+                issuesByManifestId.set(manifestId, createdIssue.data);
+              }
               issuesByTitle.set(title, createdIssue.data);
               core.notice(`Created issue #${createdIssue.data.number}: ${title}`);
+            }
+
+            for (const issueNumber of supersededLegacyIssueNumbers) {
+              if (claimedIssueNumbers.has(issueNumber)) {
+                continue;
+              }
+
+              const issue = existingIssues.find(existingIssue => existingIssue.number === issueNumber);
+              if (!issue || issue.state === "closed") {
+                continue;
+              }
+
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: "closed"
+              });
+
+              core.notice(`Closed superseded legacy issue #${issue.number}: ${issue.title}`);
             }
