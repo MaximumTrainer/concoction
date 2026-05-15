@@ -1,0 +1,38 @@
+using Concoction.Domain.Enums;
+
+namespace Concoction.Application.Schema;
+
+public static class SqlTypeMapper
+{
+    private static readonly Dictionary<string, DataKind> Map = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["bool"] = DataKind.Boolean,
+        ["boolean"] = DataKind.Boolean,
+        ["bit"] = DataKind.Boolean,
+        ["smallint"] = DataKind.Integer,
+        ["integer"] = DataKind.Integer,
+        ["int"] = DataKind.Integer,
+        ["bigint"] = DataKind.Long,
+        ["numeric"] = DataKind.Decimal,
+        ["decimal"] = DataKind.Decimal,
+        ["float"] = DataKind.Double,
+        ["double"] = DataKind.Double,
+        ["real"] = DataKind.Double,
+        ["text"] = DataKind.String,
+        ["varchar"] = DataKind.String,
+        ["character varying"] = DataKind.String,
+        ["char"] = DataKind.String,
+        ["uuid"] = DataKind.Guid,
+        ["date"] = DataKind.Date,
+        ["timestamp"] = DataKind.DateTime,
+        ["timestamp without time zone"] = DataKind.DateTime,
+        ["timestamp with time zone"] = DataKind.DateTime,
+        ["json"] = DataKind.Json,
+        ["jsonb"] = DataKind.Json,
+        ["blob"] = DataKind.Binary,
+        ["bytea"] = DataKind.Binary
+    };
+
+    public static DataKind MapToDataKind(string sqlType)
+        => Map.TryGetValue(sqlType.Trim(), out var dataKind) ? dataKind : DataKind.Unknown;
+}

@@ -1,0 +1,16 @@
+/home/runner/work/concoction/concoction/Concoction.Application/bin/Debug/net10.0/Concoction.Application.deps.json
+/home/runner/work/concoction/concoction/Concoction.Application/bin/Debug/net10.0/Concoction.Application.dll
+/home/runner/work/concoction/concoction/Concoction.Application/bin/Debug/net10.0/Concoction.Application.pdb
+/home/runner/work/concoction/concoction/Concoction.Application/bin/Debug/net10.0/Concoction.Domain.dll
+/home/runner/work/concoction/concoction/Concoction.Application/bin/Debug/net10.0/Concoction.Domain.pdb
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concoction.Application.csproj.AssemblyReference.cache
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concoction.Application.GeneratedMSBuildEditorConfig.editorconfig
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concoction.Application.AssemblyInfoInputs.cache
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concoction.Application.AssemblyInfo.cs
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concoction.Application.csproj.CoreCompileInputs.cache
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concoction.Application.sourcelink.json
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concocti.F47C0FB5.Up2Date
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concoction.Application.dll
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/refint/Concoction.Application.dll
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/Concoction.Application.pdb
+/home/runner/work/concoction/concoction/Concoction.Application/obj/Debug/net10.0/ref/Concoction.Application.dll
