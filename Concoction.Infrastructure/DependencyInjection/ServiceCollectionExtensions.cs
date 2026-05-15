@@ -2,6 +2,7 @@ using Concoction.Application.Abstractions;
 using Concoction.Application.Accounts;
 using Concoction.Application.ApiKeys;
 using Concoction.Application.Chat;
+using Concoction.Application.Chat.Tools;
 using Concoction.Application.Compliance;
 using Concoction.Application.Configuration;
 using Concoction.Application.Constraints;
@@ -71,7 +72,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IProjectDatabaseCatalog, ProjectDatabaseCatalog>();
 
         // #30 — chat
-        services.AddSingleton<IToolRegistry, ToolRegistry>();
+        services.AddSingleton<IToolRegistry>(sp =>
+        {
+            var registry = new ToolRegistry();
+            // Built-in tools registered at composition time
+            registry.Register(new DiscoverSchemaTool(sp.GetRequiredService<ISchemaDiscoveryService>()));
+            registry.Register(new GenerateDataTool(sp.GetRequiredService<ISyntheticDataOrchestrator>()));
+            return registry;
+        });
         services.AddSingleton<IAgentChatService, AgentChatService>();
 
         // #31 — API keys
@@ -81,6 +89,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWorkflowService, WorkflowService>();
         services.AddSingleton<ISkillRegistry, SkillRegistryService>();
         services.AddSingleton<IApiContractIngestionService, OpenApiContractIngestionService>();
+
+        // #13 — schema/profile snapshots
+        services.AddSingleton<ISchemaSnapshotService, SchemaSnapshotService>();
+        services.AddSingleton<IProfileSnapshotService, ProfileSnapshotService>();
 
         return services;
     }
@@ -108,6 +120,16 @@ public static class ServiceCollectionExtensions
         {
             var baseDir = Path.Combine(Path.GetTempPath(), "concoction-artifacts");
             return new FileSystemArtifactStore(baseDir);
+        });
+
+        services.AddSingleton<IDataProfiler>(sp =>
+        {
+            var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SchemaProviderOptions>>().Value;
+            return options.Provider.ToLowerInvariant() switch
+            {
+                "sqlite" => ActivatorUtilities.CreateInstance<SqliteDataProfiler>(sp),
+                _ => ActivatorUtilities.CreateInstance<SqliteDataProfiler>(sp) // fallback to SQLite for now
+            };
         });
 
         // In-memory repositories (default; swap for EF Core adapters in production)

@@ -63,7 +63,7 @@ public sealed class DependencyGraphPlanner : IGenerationPlanner
 
         if (ordered.Count == tableNames.Length)
         {
-            return new GenerationPlan(ordered, [], diagnostics);
+            return new GenerationPlan(ordered, [], diagnostics, selfReferences.Distinct(StringComparer.Ordinal).Order().ToArray());
         }
 
         // Cycle detected: append cycle tables in deterministic order so generation still proceeds
@@ -74,6 +74,7 @@ public sealed class DependencyGraphPlanner : IGenerationPlanner
         return new GenerationPlan(
             ordered.Concat(cycleTables).ToArray(),
             [cycleTables],
-            diagnostics);
+            diagnostics,
+            selfReferences.Distinct(StringComparer.Ordinal).Order().ToArray());
     }
 }

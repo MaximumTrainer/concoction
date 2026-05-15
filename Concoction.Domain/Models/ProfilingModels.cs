@@ -31,7 +31,8 @@ public sealed record SchemaSnapshot(
     string DatabaseName,
     int Version,
     DateTimeOffset CapturedAt,
-    DatabaseSchema Schema);
+    DatabaseSchema Schema,
+    Guid WorkspaceId = default);
 
 /// <summary>Diagnostic produced during schema review — surfaces unsupported or partial metadata.</summary>
 public sealed record SchemaReviewDiagnostic(

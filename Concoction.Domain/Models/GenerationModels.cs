@@ -24,7 +24,12 @@ public sealed record ValidationIssue(string Table, string Column, string Reason)
 public sealed record GenerationPlan(
     IReadOnlyList<string> OrderedTables,
     IReadOnlyList<IReadOnlyList<string>> Cycles,
-    IReadOnlyList<string> Diagnostics);
+    IReadOnlyList<string> Diagnostics,
+    IReadOnlyList<string> SelfReferencingTables)
+{
+    public GenerationPlan(IReadOnlyList<string> orderedTables, IReadOnlyList<IReadOnlyList<string>> cycles, IReadOnlyList<string> diagnostics)
+        : this(orderedTables, cycles, diagnostics, []) { }
+}
 
 public sealed record RunSummary(
     DateTimeOffset StartedAt,

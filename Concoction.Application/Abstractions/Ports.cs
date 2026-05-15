@@ -14,6 +14,15 @@ public interface ISchemaDiscoveryService
     Task<DatabaseSchema> DiscoverAsync(CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Profiles a live database by collecting aggregate-only statistics.
+/// Never reads raw row values — only COUNT, DISTINCT, MIN, MAX aggregates.
+/// </summary>
+public interface IDataProfiler
+{
+    Task<ProfileSnapshot> ProfileAsync(DatabaseSchema schema, CancellationToken cancellationToken = default);
+}
+
 public sealed record GeneratorContext(
     string Table,
     string Column,
@@ -381,3 +390,17 @@ public interface IApiContractIngestionService
     Task<IReadOnlyList<GeneratedApiEndpoint>> IngestAsync(string openApiJson, Guid workspaceId, Guid requestingUserId, CancellationToken cancellationToken = default);
 }
 
+public interface ISchemaSnapshotService
+{
+    Task<SchemaSnapshot> SaveSnapshotAsync(Guid workspaceId, DatabaseSchema schema, CancellationToken cancellationToken = default);
+    Task<SchemaSnapshot?> GetSnapshotAsync(Guid snapshotId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<SchemaSnapshot>> ListSnapshotsAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+    Task<DatabaseSchema?> RestoreSchemaAsync(Guid snapshotId, CancellationToken cancellationToken = default);
+}
+
+public interface IProfileSnapshotService
+{
+    Task<ProfileSnapshot> SaveProfileAsync(Guid workspaceId, ProfileSnapshot profile, CancellationToken cancellationToken = default);
+    Task<ProfileSnapshot?> GetProfileAsync(Guid profileId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProfileSnapshot>> ListProfilesAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+}
