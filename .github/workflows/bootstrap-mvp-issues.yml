@@ -59,8 +59,21 @@ jobs:
 
             const { owner, repo } = context.repo;
 
-            function colorFromLabel(name) {
+            function deriveColorFromLabel(name) {
               return crypto.createHash("sha256").update(name).digest("hex").slice(0, 6);
+            }
+
+            function sanitizeLabels(labels) {
+              if (!Array.isArray(labels)) {
+                return [];
+              }
+
+              return [...new Set(
+                labels
+                  .filter(label => typeof label === "string")
+                  .map(label => label.trim())
+                  .filter(label => label.length > 0)
+              )];
             }
 
             async function ensureLabel(labelName) {
@@ -79,22 +92,20 @@ jobs:
                   owner,
                   repo,
                   name: labelName,
-                  color: colorFromLabel(labelName),
+                  color: deriveColorFromLabel(labelName),
                   description: "Created by the Bootstrap MVP Issues workflow."
                 });
               }
             }
 
-            async function findExistingIssue(title) {
-              const issues = await github.paginate(github.rest.issues.listForRepo, {
-                owner,
-                repo,
-                state: "all",
-                per_page: 100
-              });
+            const existingIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "all",
+              per_page: 100
+            });
 
-              return issues.find(item => item.title === title);
-            }
+            const issuesByTitle = new Map(existingIssues.map(issue => [issue.title, issue]));
 
             for (const [index, item] of manifest.entries()) {
               if (!item || typeof item !== "object") {
@@ -104,9 +115,7 @@ jobs:
 
               const title = typeof item.title === "string" ? item.title.trim() : "";
               const body = typeof item.body === "string" ? item.body : "";
-              const labels = Array.isArray(item.labels)
-                ? [...new Set(item.labels.filter(label => typeof label === "string" && label.trim().length > 0))]
-                : [];
+              const labels = sanitizeLabels(item.labels);
 
               if (!title) {
                 core.warning(`Skipping manifest entry ${index}: missing title.`);
@@ -122,7 +131,7 @@ jobs:
                 await ensureLabel(label);
               }
 
-              const existingIssue = await findExistingIssue(title);
+              const existingIssue = issuesByTitle.get(title);
 
               if (existingIssue) {
                 await github.rest.issues.update({
@@ -146,5 +155,6 @@ jobs:
                 labels
               });
 
+              issuesByTitle.set(title, createdIssue.data);
               core.notice(`Created issue #${createdIssue.data.number}: ${title}`);
             }
