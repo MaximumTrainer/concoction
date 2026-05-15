@@ -408,9 +408,13 @@
         scroll-behavior: auto;
       }
 
-      *, *::before, *::after {
-        animation: none !important;
-        transition: none !important;
+      .btn,
+      .nav-links a {
+        transition: none;
+      }
+
+      .btn:hover {
+        transform: none;
       }
     }
   </style>
