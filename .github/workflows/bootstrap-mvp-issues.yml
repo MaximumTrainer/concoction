@@ -1,0 +1,204 @@
+name: Bootstrap MVP Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: Path to the JSON issue manifest in the repository
+        required: true
+        default: .github/issue-manifests/concoction-mvp.json
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create or update issues from manifest
+        uses: actions/github-script@v7
+        env:
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+        with:
+          script: |
+            const crypto = require("node:crypto");
+            const fs = require("node:fs");
+            const path = require("node:path");
+
+            const manifestPath = process.env.MANIFEST_PATH;
+            if (!manifestPath) {
+              core.setFailed("Internal error: manifest_path was not provided.");
+              return;
+            }
+
+            const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+            const resolvedPath = path.resolve(workspace, manifestPath);
+
+            if (!fs.existsSync(resolvedPath)) {
+              core.setFailed(`Manifest file not found: ${manifestPath}`);
+              return;
+            }
+
+            let manifest;
+            try {
+              manifest = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
+            } catch (error) {
+              core.setFailed(`Failed to parse manifest JSON: ${error.message}`);
+              return;
+            }
+
+            if (!Array.isArray(manifest)) {
+              core.setFailed("Manifest must be a JSON array of issue definitions.");
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const labelColorPalette = [
+              "0e8a16",
+              "1d76db",
+              "5319e7",
+              "d93f0b",
+              "fbca04",
+              "b60205",
+              "0052cc",
+              "006b75"
+            ];
+
+            function hashLabelNameToColor(name) {
+              const hash = crypto.createHash("sha256").update(name).digest("hex");
+              const index = parseInt(hash.slice(0, 8), 16) % labelColorPalette.length;
+              return labelColorPalette[index];
+            }
+
+            function sanitizeLabels(labels) {
+              if (!Array.isArray(labels)) {
+                return [];
+              }
+
+              return [...new Set(
+                labels
+                  .filter(label => typeof label === "string")
+                  .map(label => label.trim())
+                  .filter(label => label.length > 0)
+              )];
+            }
+
+            async function ensureLabel(labelName) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner,
+                  repo,
+                  name: labelName
+                });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: labelName,
+                  color: hashLabelNameToColor(labelName),
+                  description: "Created automatically by the issue bootstrap workflow."
+                });
+              }
+            }
+
+            const existingIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "all",
+              per_page: 100
+            });
+
+            const issuesByTitle = new Map();
+            const duplicateTitles = new Set();
+
+            for (const issue of existingIssues) {
+              if (issuesByTitle.has(issue.title)) {
+                duplicateTitles.add(issue.title);
+                continue;
+              }
+
+              issuesByTitle.set(issue.title, issue);
+            }
+
+            for (const duplicateTitle of duplicateTitles) {
+              core.warning(`Multiple existing issues share the title "${duplicateTitle}". The workflow will skip updates for this title.`);
+            }
+
+            for (const [index, item] of manifest.entries()) {
+              if (!item || typeof item !== "object") {
+                core.warning(`Skipping manifest entry ${index}: expected an object.`);
+                continue;
+              }
+
+              const title = typeof item.title === "string" ? item.title.trim() : "";
+              const body = typeof item.body === "string" ? item.body : "";
+              const labels = sanitizeLabels(item.labels);
+
+              if (!title) {
+                core.warning(`Skipping manifest entry ${index}: missing title.`);
+                continue;
+              }
+
+              if (!body.trim()) {
+                core.warning(`Skipping manifest entry "${title}": missing body.`);
+                continue;
+              }
+
+              for (const label of labels) {
+                await ensureLabel(label);
+              }
+
+              if (duplicateTitles.has(title)) {
+                core.warning(`Skipping manifest entry "${title}" because multiple repository issues already use this title.`);
+                continue;
+              }
+
+              const existingIssue = issuesByTitle.get(title);
+
+              if (existingIssue) {
+                const existingLabels = [...new Set((existingIssue.labels ?? [])
+                  .map(label => typeof label === "string" ? label : label?.name)
+                  .filter(label => typeof label === "string"))]
+                  .sort();
+                const desiredLabels = [...labels].sort();
+                const bodyChanged = existingIssue.body !== body;
+                const labelsChanged = existingLabels.length !== desiredLabels.length
+                  || existingLabels.some((label, labelIndex) => label !== desiredLabels[labelIndex]);
+
+                if (!bodyChanged && !labelsChanged) {
+                  core.notice(`No changes needed for issue #${existingIssue.number}: ${title}`);
+                  continue;
+                }
+
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: existingIssue.number,
+                  body,
+                  labels
+                });
+
+                core.notice(`Updated issue #${existingIssue.number}: ${title}`);
+                continue;
+              }
+
+              const createdIssue = await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels
+              });
+
+              issuesByTitle.set(title, createdIssue.data);
+              core.notice(`Created issue #${createdIssue.data.number}: ${title}`);
+            }

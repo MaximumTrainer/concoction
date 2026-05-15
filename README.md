@@ -29,6 +29,8 @@ Run workflow `Bootstrap MVP Issues` with manifest path:
 
 - `.github/issue-manifests/concoction-mvp.json`
 
+The workflow creates any missing labels and then creates or updates issues by matching on the manifest title.
+
 Concoction is a proposed open-source, agentic synthetic data platform for the .NET ecosystem: a modern C# (.NET 10) equivalent of Tonic Fabricate.
 
 ## Goals
