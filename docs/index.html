@@ -402,6 +402,17 @@
         grid-template-columns: 1fr;
       }
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      html, body {
+        scroll-behavior: auto;
+      }
+
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -442,7 +453,7 @@
           <div class="stats" aria-label="project highlights">
             <div class="stat"><strong>81 tests</strong><span>xUnit + FluentAssertions</span></div>
             <div class="stat"><strong>3 export formats</strong><span>CSV, JSON, SQL</span></div>
-            <div class="stat"><strong>5 CLI commands</strong><span>discover, profile, generate, validate, export</span></div>
+            <div class="stat"><strong>5 CLI commands</strong><span>discover, discover-profile, generate, validate, export</span></div>
           </div>
         </div>
         <aside class="hero-card" aria-label="CLI example">
@@ -526,19 +537,19 @@
               <td>Schema ingestion</td>
               <td>SQLite and PostgreSQL introspection of tables, columns, PK/FK relations, unique constraints, indexes, and diagnostics.</td>
               <td><span class="ok">Implemented</span></td>
-              <td><a href="user-guide.html#schema-discovery">Schema Discovery</a></td>
+              <td><a href="user-guide.html#discovery">Schema Discovery</a></td>
             </tr>
             <tr>
               <td>Generation planning</td>
               <td>Topological ordering, cycle detection, and self-referencing table handling before row generation starts.</td>
               <td><span class="ok">Implemented</span></td>
-              <td><a href="user-guide.html#generation-plan">Generation Plan</a></td>
+              <td><a href="user-guide.html#plan">Generation Plan</a></td>
             </tr>
             <tr>
               <td>Data kind system</td>
               <td>Primitive and semantic <code>DataKind</code> mapping including email, names, URLs, phone, date/time, numeric, GUID, JSON, and binary.</td>
               <td><span class="ok">Implemented</span></td>
-              <td><a href="user-guide.html#data-kinds">Data Kinds</a></td>
+              <td><a href="user-guide.html#datakinds">Data Kinds</a></td>
             </tr>
             <tr>
               <td>Rules DSL</td>
@@ -574,7 +585,7 @@
               <td>Platform services</td>
               <td>Accounts, workspaces, projects, runs, workflows, API keys, and agent chat endpoints for multi-tenant usage.</td>
               <td><span class="ok">Implemented</span></td>
-              <td><a href="user-guide.html#multi-tenant-platform">Platform guide</a></td>
+              <td><a href="user-guide.html#platform">Platform guide</a></td>
             </tr>
             <tr>
               <td>Deployment website</td>
@@ -605,8 +616,8 @@
           <p>Best for service-level orchestration and central platform usage.</p>
           <ul>
             <li><a href="how-to/rest-api.html">REST API reference</a></li>
-            <li><a href="user-guide.html#multi-tenant-platform">Multi-tenant concepts</a></li>
-            <li><a href="user-guide.html#api-keys">API key management</a></li>
+            <li><a href="user-guide.html#platform">Multi-tenant concepts</a></li>
+            <li><a href="user-guide.html#apikeys">API key management</a></li>
           </ul>
         </article>
         <article class="start-card">
