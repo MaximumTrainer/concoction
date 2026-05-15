@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Concoction.Application.Abstractions;
+using Concoction.Domain.Enums;
 using Concoction.Domain.Models;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -40,6 +41,32 @@ public sealed class RuleConfigurationService : IRuleConfigurationService
             foreach (var column in table.Columns)
             {
                 Validator.TryValidateObject(column, new ValidationContext(column), results, true);
+
+                // Validate that Strategy, if specified, is a recognised DataKind name.
+                if (!string.IsNullOrWhiteSpace(column.Strategy)
+                    && !Enum.TryParse<DataKind>(column.Strategy, ignoreCase: true, out _))
+                {
+                    results.Add(new ValidationResult(
+                        $"Table '{table.Table}', column '{column.Column}': unknown strategy '{column.Strategy}'. " +
+                        $"Valid values are: {string.Join(", ", Enum.GetNames<DataKind>())}."));
+                }
+
+                if (column.JsonPaths is not null)
+                {
+                    foreach (var jsonPath in column.JsonPaths)
+                    {
+                        Validator.TryValidateObject(jsonPath, new ValidationContext(jsonPath), results, true);
+
+                        if (!string.IsNullOrWhiteSpace(jsonPath.Strategy)
+                            && !Enum.TryParse<DataKind>(jsonPath.Strategy, ignoreCase: true, out _))
+                        {
+                            results.Add(new ValidationResult(
+                                $"Table '{table.Table}', column '{column.Column}', path '{jsonPath.Path}': " +
+                                $"unknown strategy '{jsonPath.Strategy}'. " +
+                                $"Valid values are: {string.Join(", ", Enum.GetNames<DataKind>())}."));
+                        }
+                    }
+                }
             }
         }
 

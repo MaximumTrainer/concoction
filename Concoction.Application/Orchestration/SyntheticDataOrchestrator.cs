@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
 using Concoction.Application.Abstractions;
+using Concoction.Domain.Enums;
 using Concoction.Domain.Models;
 
 namespace Concoction.Application.Orchestration;
@@ -38,6 +41,15 @@ public sealed class SyntheticDataOrchestrator(
                 : 10;
 
             var materialized = await materializer.MaterializeAsync(table, rowCount, request.Rules, keyPool, cancellationToken).ConfigureAwait(false);
+
+            // Build a lookup of compliance decisions for this table to apply masking.
+            var tableCompliance = compliance
+                .Where(d => string.Equals(d.Table, table.QualifiedName, StringComparison.Ordinal))
+                .ToDictionary(d => d.Column, d => d, StringComparer.OrdinalIgnoreCase);
+
+            var maskedRows = ApplyComplianceMasking(materialized.Rows, tableCompliance);
+            materialized = new TableData(materialized.Table, maskedRows);
+
             tableData.Add(materialized);
 
             var tableIssues = constraintEvaluator.Evaluate(table, materialized.Rows);
@@ -60,6 +72,13 @@ public sealed class SyntheticDataOrchestrator(
         if (plan.SelfReferencingTables.Count > 0)
         {
             BackfillSelfReferences(request.Schema, plan.SelfReferencingTables, tableData, issues);
+        }
+
+        // Backfill cross-table FK columns in cyclic groups — these couldn't be resolved during
+        // ordered generation. Columns must be nullable to allow a null on the first row.
+        if (plan.Cycles.Count > 0)
+        {
+            BackfillCyclicForeignKeys(request.Schema, plan.Cycles, tableData, keyPool, issues);
         }
 
         var result = new GenerationResult(tableData, issues, compliance);
@@ -147,5 +166,158 @@ public sealed class SyntheticDataOrchestrator(
 
             tableData[idx] = new TableData(tableName, updatedRows);
         }
+    }
+
+    /// <summary>
+    /// Backfills cross-table FK columns in cyclic groups.
+    /// During ordered generation, at least one table in each cycle had no parent rows yet,
+    /// so those FK columns were generated as arbitrary values. This pass replaces them with
+    /// valid references from the key pool now that all cycle tables have been generated.
+    /// </summary>
+    private static void BackfillCyclicForeignKeys(
+        DatabaseSchema schema,
+        IReadOnlyList<IReadOnlyList<string>> cycles,
+        List<TableData> tableData,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> keyPool,
+        List<ValidationIssue> issues)
+    {
+        foreach (var cycleGroup in cycles)
+        {
+            foreach (var tableName in cycleGroup)
+            {
+                var tableSchema = schema.Tables.FirstOrDefault(t => string.Equals(t.QualifiedName, tableName, StringComparison.Ordinal));
+                if (tableSchema is null) continue;
+
+                var cycleTableSet = new HashSet<string>(cycleGroup, StringComparer.Ordinal);
+
+                // Only backfill FKs that point to other tables in the same cycle group.
+                var cyclicFks = tableSchema.ForeignKeys
+                    .Where(fk => cycleTableSet.Contains(fk.ReferencedTable)
+                        && !string.Equals(fk.ReferencedTable, tableName, StringComparison.Ordinal))
+                    .ToArray();
+
+                if (cyclicFks.Length == 0) continue;
+                if (!keyPool.TryGetValue(tableName, out var ownKeys) || ownKeys.Count == 0) continue;
+
+                var idx = tableData.FindIndex(t => string.Equals(t.Table, tableName, StringComparison.Ordinal));
+                if (idx < 0) continue;
+
+                var rows = tableData[idx].Rows;
+                if (rows.Count == 0) continue;
+
+                var updatedRows = rows.Select((row, rowIndex) =>
+                {
+                    var mutable = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var fk in cyclicFks)
+                    {
+                        if (!keyPool.TryGetValue(fk.ReferencedTable, out var parentKeys) || parentKeys.Count == 0)
+                        {
+                            // Parent table has no rows — null out nullable FK columns
+                            foreach (var sourceCol in fk.SourceColumns)
+                            {
+                                var colSchema = tableSchema.Columns.FirstOrDefault(c => string.Equals(c.Name, sourceCol, StringComparison.OrdinalIgnoreCase));
+                                if (colSchema?.IsNullable == true)
+                                    mutable[sourceCol] = null;
+                                else
+                                    issues.Add(new ValidationIssue(tableName, sourceCol,
+                                        $"Cyclic FK '{fk.Name}' cannot be backfilled: referenced table '{fk.ReferencedTable}' has no rows and column is not nullable."));
+                            }
+                            continue;
+                        }
+
+                        // Row 0 gets null to break the cycle; subsequent rows reference a real parent row.
+                        if (rowIndex == 0)
+                        {
+                            foreach (var sourceCol in fk.SourceColumns)
+                            {
+                                var colSchema = tableSchema.Columns.FirstOrDefault(c => string.Equals(c.Name, sourceCol, StringComparison.OrdinalIgnoreCase));
+                                if (colSchema?.IsNullable == true)
+                                {
+                                    mutable[sourceCol] = null;
+                                }
+                                else
+                                {
+                                    // Non-nullable — point to the first parent row instead of null.
+                                    var firstParent = parentKeys[0];
+                                    for (var colIdx = 0; colIdx < fk.SourceColumns.Count && colIdx < fk.ReferencedColumns.Count; colIdx++)
+                                    {
+                                        var refCol = fk.ReferencedColumns[colIdx];
+                                        mutable[fk.SourceColumns[colIdx]] = firstParent.TryGetValue(refCol, out var refVal) ? refVal : null;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Point to a parent row using round-robin to distribute references.
+                            var parentIdx = (rowIndex - 1) % parentKeys.Count;
+                            var parentRow = parentKeys[parentIdx];
+                            for (var colIdx = 0; colIdx < fk.SourceColumns.Count && colIdx < fk.ReferencedColumns.Count; colIdx++)
+                            {
+                                var sourceCol = fk.SourceColumns[colIdx];
+                                var refCol = fk.ReferencedColumns[colIdx];
+                                mutable[sourceCol] = parentRow.TryGetValue(refCol, out var refVal) ? refVal : null;
+                            }
+                        }
+                    }
+
+                    return (IReadOnlyDictionary<string, object?>)mutable;
+                }).ToList();
+
+                tableData[idx] = new TableData(tableName, updatedRows);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies compliance masking to generated rows based on the policy decisions for each column.
+    /// None / Synthesize → value passes through unchanged.
+    /// Redact  → null (for nullable columns) or "REDACTED".
+    /// Pseudonymize → deterministic stable pseudonym derived from the original value's hash.
+    /// Tokenize → "TKN-{hash}" reference token.
+    /// </summary>
+    private static IReadOnlyList<IReadOnlyDictionary<string, object?>> ApplyComplianceMasking(
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows,
+        IReadOnlyDictionary<string, ComplianceDecision> decisions)
+    {
+        var sensitive = decisions.Values
+            .Where(d => d.Strategy is not SensitiveFieldStrategy.None and not SensitiveFieldStrategy.Synthesize)
+            .ToArray();
+
+        if (sensitive.Length == 0) return rows;
+
+        return rows.Select(row =>
+        {
+            var mutable = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var decision in sensitive)
+            {
+                if (!mutable.TryGetValue(decision.Column, out var original)) continue;
+                if (original is null) continue;
+
+                mutable[decision.Column] = decision.Strategy switch
+                {
+                    SensitiveFieldStrategy.Redact => "REDACTED",
+                    SensitiveFieldStrategy.Pseudonymize => Pseudonymize(original.ToString() ?? string.Empty),
+                    SensitiveFieldStrategy.Tokenize => Tokenize(original.ToString() ?? string.Empty),
+                    _ => original
+                };
+            }
+
+            return (IReadOnlyDictionary<string, object?>)mutable;
+        }).ToList();
+    }
+
+    private static string Pseudonymize(string value)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes("pseudo:" + value));
+        return "usr_" + Convert.ToHexString(hash)[..7].ToLowerInvariant();
+    }
+
+    private static string Tokenize(string value)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes("token:" + value));
+        return "TKN-" + Convert.ToHexString(hash)[..12].ToUpperInvariant();
     }
 }

@@ -3,16 +3,14 @@ using Concoction.Domain.Models;
 
 namespace Concoction.Application.Projects;
 
-public sealed class ProjectService(IWorkspaceService workspaceService, IAuditLogService auditLogService) : IProjectService
+public sealed class ProjectService(IProjectRepository projectRepository, IWorkspaceService workspaceService, IAuditLogService auditLogService) : IProjectService
 {
-    private readonly List<Project> _projects = [];
-
     public async Task<Project> CreateAsync(CreateProjectCommand command, CancellationToken cancellationToken = default)
     {
         await RequireEditorAsync(command.WorkspaceId, command.CreatedByUserId, cancellationToken).ConfigureAwait(false);
 
         var project = new Project(Guid.NewGuid(), command.WorkspaceId, command.Name, ProjectStatus.Active, command.CreatedByUserId, DateTimeOffset.UtcNow);
-        _projects.Add(project);
+        await projectRepository.SaveAsync(project, cancellationToken).ConfigureAwait(false);
 
         var workspace = await workspaceService.GetByIdAsync(command.WorkspaceId, command.CreatedByUserId, cancellationToken).ConfigureAwait(false);
         if (workspace is not null)
@@ -32,8 +30,7 @@ public sealed class ProjectService(IWorkspaceService workspaceService, IAuditLog
         await RequireEditorAsync(project.WorkspaceId, requestingUserId, cancellationToken).ConfigureAwait(false);
 
         var updated = project with { Name = newName };
-        var index = _projects.FindIndex(p => p.Id == projectId);
-        _projects[index] = updated;
+        await projectRepository.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
         return updated;
     }
 
@@ -43,8 +40,7 @@ public sealed class ProjectService(IWorkspaceService workspaceService, IAuditLog
         await RequireEditorAsync(project.WorkspaceId, requestingUserId, cancellationToken).ConfigureAwait(false);
 
         var archived = project with { Status = ProjectStatus.Archived, ArchivedAt = DateTimeOffset.UtcNow };
-        var index = _projects.FindIndex(p => p.Id == projectId);
-        _projects[index] = archived;
+        await projectRepository.SaveAsync(archived, cancellationToken).ConfigureAwait(false);
 
         var workspace = await workspaceService.GetByIdAsync(project.WorkspaceId, requestingUserId, cancellationToken).ConfigureAwait(false);
         if (workspace is not null)
@@ -60,7 +56,7 @@ public sealed class ProjectService(IWorkspaceService workspaceService, IAuditLog
 
     public async Task<Project?> GetByIdAsync(Guid projectId, Guid requestingUserId, CancellationToken cancellationToken = default)
     {
-        var project = _projects.Find(p => p.Id == projectId);
+        var project = await projectRepository.GetByIdAsync(projectId, cancellationToken).ConfigureAwait(false);
         if (project is null) return null;
 
         var role = await workspaceService.GetEffectiveRoleAsync(project.WorkspaceId, requestingUserId, cancellationToken).ConfigureAwait(false);
@@ -71,7 +67,7 @@ public sealed class ProjectService(IWorkspaceService workspaceService, IAuditLog
     {
         var role = await workspaceService.GetEffectiveRoleAsync(workspaceId, requestingUserId, cancellationToken).ConfigureAwait(false);
         if (!role.HasValue) throw new UnauthorizedAccessException("Access denied to workspace.");
-        return _projects.Where(p => p.WorkspaceId == workspaceId).ToArray();
+        return await projectRepository.ListByWorkspaceAsync(workspaceId, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<Project> GetProjectOrThrowAsync(Guid projectId, Guid requestingUserId, CancellationToken cancellationToken)
@@ -89,3 +85,4 @@ public sealed class ProjectService(IWorkspaceService workspaceService, IAuditLog
         }
     }
 }
+

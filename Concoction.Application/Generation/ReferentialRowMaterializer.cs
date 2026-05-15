@@ -1,4 +1,5 @@
 using Concoction.Application.Abstractions;
+using Concoction.Domain.Enums;
 using Concoction.Domain.Models;
 
 namespace Concoction.Application.Generation;
@@ -161,6 +162,12 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
             return null;
         }
 
+        // Distribution-based weighted value sampling: pick from an explicit value→weight map.
+        if (columnRule?.Distribution is { Count: > 0 } distribution)
+        {
+            return SampleFromDistribution(distribution, $"dist:{table.QualifiedName}.{column.Name}.{rowIndex}");
+        }
+
         // JSON path-level strategy: build a nested JSON object instead of dispatching a scalar generator.
         if (columnRule?.JsonPaths is { Count: > 0 } jsonPaths)
         {
@@ -170,8 +177,16 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
                 cancellationToken).ConfigureAwait(false);
         }
 
+        // Allow ColumnRule.Strategy to override the column's inferred DataKind (e.g. "Email" on a String column).
+        var dataKind = column.DataKind;
+        if (!string.IsNullOrWhiteSpace(columnRule?.Strategy)
+            && Enum.TryParse<DataKind>(columnRule.Strategy, ignoreCase: true, out var overrideKind))
+        {
+            dataKind = overrideKind;
+        }
+
         var context = new GeneratorContext(
-            table.QualifiedName, column.Name, column.DataKind, rowIndex, rules, row, keyPool);
+            table.QualifiedName, column.Name, dataKind, rowIndex, rules, row, keyPool);
         var candidate = await dispatcher.GenerateAsync(context, cancellationToken).ConfigureAwait(false);
 
         if (candidate is string text && column.MaxLength is int maxLength && text.Length > maxLength)
@@ -196,5 +211,31 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
     {
         var hash = HashCode.Combine(rowIndex, attempt);
         return hash < 0 ? -(hash + 1) : hash; // ensure non-negative
+    }
+
+    /// <summary>
+    /// Samples a value from a weighted distribution using cumulative probability.
+    /// Weights do not need to sum to 1 — they are normalised internally.
+    /// </summary>
+    private object? SampleFromDistribution(Dictionary<string, double> distribution, string scope)
+    {
+        var totalWeight = 0.0;
+        foreach (var weight in distribution.Values)
+            totalWeight += weight > 0 ? weight : 0;
+
+        if (totalWeight <= 0)
+            return distribution.Keys.FirstOrDefault();
+
+        var sample = random.NextDouble(scope) * totalWeight;
+        var cumulative = 0.0;
+        foreach (var (value, weight) in distribution)
+        {
+            if (weight <= 0) continue;
+            cumulative += weight;
+            if (sample <= cumulative)
+                return value;
+        }
+
+        return distribution.Keys.Last();
     }
 }

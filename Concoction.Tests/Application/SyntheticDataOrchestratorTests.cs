@@ -62,6 +62,92 @@ public sealed class SyntheticDataOrchestratorTests
         result.Tables.Single(t => t.Table == "main.orders").Rows.Should().HaveCount(10);
     }
 
+    [Fact]
+    public async Task GenerateAsync_ShouldApplyRedactMasking_WhenColumnMatchesSsnPattern()
+    {
+        var schema = new DatabaseSchema("fixture",
+        [
+            new TableSchema("main", "patients",
+            [
+                new ColumnSchema("id", "int", DataKind.Integer, false, true, true, null, null, null, null),
+                new ColumnSchema("ssn", "text", DataKind.String, false, false, true, null, null, null, null)
+            ],
+            ["id"], [], [], [])
+        ]);
+
+        var orchestrator = BuildOrchestrator(schema);
+        var request = new GenerationRequest(schema,
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["main.patients"] = 3 }, 42);
+
+        var (result, _) = await orchestrator.GenerateAsync(request);
+
+        var rows = result.Tables.Single(t => t.Table == "main.patients").Rows;
+        rows.Should().AllSatisfy(row => row["ssn"].Should().Be("REDACTED"));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ShouldApplyPseudonymizeMasking_WhenColumnMatchesEmailPattern()
+    {
+        var schema = new DatabaseSchema("fixture",
+        [
+            new TableSchema("main", "users",
+            [
+                new ColumnSchema("id", "int", DataKind.Integer, false, true, true, null, null, null, null),
+                new ColumnSchema("email", "text", DataKind.String, false, false, true, null, null, null, null)
+            ],
+            ["id"], [], [new UniqueConstraintSchema("uq_users_email", ["email"])], [])
+        ]);
+
+        var orchestrator = BuildOrchestrator(schema);
+        var request = new GenerationRequest(schema,
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["main.users"] = 5 }, 7);
+
+        var (result, _) = await orchestrator.GenerateAsync(request);
+
+        var rows = result.Tables.Single(t => t.Table == "main.users").Rows;
+        rows.Should().AllSatisfy(row =>
+            ((string?)row["email"]).Should().StartWith("usr_"));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ShouldApplyTokenizeMasking_WhenColumnMatchesPhonePattern()
+    {
+        var schema = new DatabaseSchema("fixture",
+        [
+            new TableSchema("main", "contacts",
+            [
+                new ColumnSchema("id", "int", DataKind.Integer, false, true, true, null, null, null, null),
+                new ColumnSchema("phone_number", "text", DataKind.String, false, false, true, null, null, null, null)
+            ],
+            ["id"], [], [], [])
+        ]);
+
+        var orchestrator = BuildOrchestrator(schema);
+        var request = new GenerationRequest(schema,
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["main.contacts"] = 3 }, 5);
+
+        var (result, _) = await orchestrator.GenerateAsync(request);
+
+        var rows = result.Tables.Single(t => t.Table == "main.contacts").Rows;
+        rows.Should().AllSatisfy(row =>
+            ((string?)row["phone_number"]).Should().StartWith("TKN-"));
+    }
+
+    private static SyntheticDataOrchestrator BuildOrchestrator(DatabaseSchema schema)
+    {
+        var provider = new StubSchemaProvider(schema);
+        var schemaService = new SchemaDiscoveryService(provider);
+        var random = new DeterministicRandomService(99);
+        var registry = new GeneratorRegistry();
+        registry.RegisterDefaults(random);
+        return new SyntheticDataOrchestrator(
+            schemaService,
+            new DependencyGraphPlanner(),
+            new ReferentialRowMaterializer(registry, random),
+            new ConstraintEvaluator(),
+            new DefaultSensitiveFieldPolicy());
+    }
+
     private sealed class StubSchemaProvider(DatabaseSchema schema) : ISchemaProvider
     {
         public string ProviderName => "stub";

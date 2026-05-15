@@ -55,4 +55,70 @@ public sealed class RuleConfigurationServiceTests
         merged.Tables[0].Columns.Should().ContainSingle();
         merged.Tables[0].Columns[0].FixedValue.Should().Be("x@x.com");
     }
+
+    [Fact]
+    public void Validate_ShouldReturnError_WhenStrategyIsUnknownDataKind()
+    {
+        var service = new RuleConfigurationService();
+        var config = new RuleConfiguration
+        {
+            Version = "1",
+            Tables =
+            [
+                new TableRule
+                {
+                    Table = "main.users",
+                    Columns = [new ColumnRule { Column = "name", Strategy = "NotARealDataKind" }]
+                }
+            ]
+        };
+
+        var errors = service.Validate(config);
+
+        errors.Should().ContainSingle(e => e.Contains("NotARealDataKind"));
+    }
+
+    [Fact]
+    public void Validate_ShouldReturnNoErrors_WhenStrategyIsValidDataKind()
+    {
+        var service = new RuleConfigurationService();
+        var config = new RuleConfiguration
+        {
+            Version = "1",
+            Tables =
+            [
+                new TableRule
+                {
+                    Table = "main.users",
+                    Columns = [new ColumnRule { Column = "contact", Strategy = "Email" }]
+                }
+            ]
+        };
+
+        var errors = service.Validate(config);
+
+        errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Validate_ShouldReturnNoErrors_WhenStrategyIsNull()
+    {
+        var service = new RuleConfigurationService();
+        var config = new RuleConfiguration
+        {
+            Version = "1",
+            Tables =
+            [
+                new TableRule
+                {
+                    Table = "main.users",
+                    Columns = [new ColumnRule { Column = "status" }]
+                }
+            ]
+        };
+
+        var errors = service.Validate(config);
+
+        errors.Should().BeEmpty();
+    }
 }

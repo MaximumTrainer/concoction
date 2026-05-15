@@ -68,6 +68,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IInstructionVersionService, InstructionVersionService>();
 
         // #29 — projects
+        services.AddSingleton<IProjectRepository, InMemoryProjectRepository>();
         services.AddSingleton<IProjectService, ProjectService>();
         services.AddSingleton<IProjectDatabaseCatalog, ProjectDatabaseCatalog>();
 
@@ -128,7 +129,9 @@ public static class ServiceCollectionExtensions
             return options.Provider.ToLowerInvariant() switch
             {
                 "sqlite" => ActivatorUtilities.CreateInstance<SqliteDataProfiler>(sp),
-                _ => ActivatorUtilities.CreateInstance<SqliteDataProfiler>(sp) // fallback to SQLite for now
+                _ => throw new NotSupportedException(
+                    $"No data profiler configured for provider '{options.Provider}'. " +
+                    "Only 'sqlite' is currently supported. Implement PostgreSqlDataProfiler and register it for 'postgres'.")
             };
         });
 

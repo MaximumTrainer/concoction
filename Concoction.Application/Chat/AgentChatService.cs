@@ -6,7 +6,8 @@ namespace Concoction.Application.Chat;
 public sealed class AgentChatService(
     ISessionRepository sessionRepository,
     IToolRegistry toolRegistry,
-    IWorkspaceService workspaceService) : IAgentChatService
+    IWorkspaceService workspaceService,
+    IInstructionVersionService instructionVersionService) : IAgentChatService
 {
     public async Task<ChatSession> CreateSessionAsync(CreateChatSessionCommand command, CancellationToken cancellationToken = default)
     {
@@ -104,9 +105,25 @@ public sealed class AgentChatService(
         var session = await sessionRepository.GetByIdAsync(sessionId, cancellationToken).ConfigureAwait(false);
         if (session is null) return string.Empty;
 
-        // Instruction composition is layered: workspace → project → session.
-        // For now returns a placeholder; the full implementation reads from IInstructionVersionService.
-        return $"[workspace={session.WorkspaceId}][project={session.ProjectId?.ToString() ?? "none"}][session={sessionId}]";
+        // Compose instructions layered: workspace → session scope.
+        // The workspace instruction provides the base context; session info adds scoping metadata.
+        var workspaceInstruction = await instructionVersionService.GetLatestAsync(session.WorkspaceId, cancellationToken).ConfigureAwait(false);
+
+        var parts = new List<string>();
+
+        if (workspaceInstruction is not null)
+        {
+            parts.Add(workspaceInstruction.Content);
+        }
+
+        parts.Add($"[workspace={session.WorkspaceId}]");
+        if (session.ProjectId.HasValue)
+        {
+            parts.Add($"[project={session.ProjectId.Value}]");
+        }
+        parts.Add($"[session={sessionId}][mode={session.Mode}]");
+
+        return string.Join("\n", parts);
     }
 
     private async Task<ChatSession> GetSessionOrThrowAsync(Guid sessionId, Guid requestingUserId, CancellationToken cancellationToken)

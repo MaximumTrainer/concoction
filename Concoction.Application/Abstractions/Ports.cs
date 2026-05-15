@@ -283,6 +283,13 @@ public interface IInstructionVersionService
 
 // ── #29: Project ports ────────────────────────────────────────────────────────
 
+public interface IProjectRepository
+{
+    Task<Project> SaveAsync(Project project, CancellationToken cancellationToken = default);
+    Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Project>> ListByWorkspaceAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+}
+
 public sealed record CreateProjectCommand(Guid WorkspaceId, string Name, Guid CreatedByUserId);
 public sealed record AddDatabaseCommand(Guid ProjectId, string Name, ProjectDatabaseType Type, string Provider, Guid? ConnectionRefId, Guid RequestingUserId);
 
