@@ -54,7 +54,7 @@ public static class ServiceCollectionExtensions
                 "postgres" or "postgresql" => ActivatorUtilities.CreateInstance<PostgreSqlSchemaProvider>(sp),
                 "sqlite" => ActivatorUtilities.CreateInstance<SqliteSchemaProvider>(sp),
                 _ => throw new InvalidOperationException(
-                    $"Unsupported schema provider '{options.Provider}'. Supported values: sqlite, postgres.")
+                    $"Unsupported schema provider '{options.Provider}'. Supported values: sqlite, postgres, postgresql.")
             };
         });
 

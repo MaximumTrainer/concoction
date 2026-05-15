@@ -55,18 +55,19 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
                     {
                         // Resolve the typed value from the correct referenced column of the chosen parent row.
                         var parentRow = parentRows[parentRowIdx];
-                        var sourceIdx = fk.SourceColumns
+                        var sourceMatch = fk.SourceColumns
                             .Select(static (c, i) => (c, i))
-                            .FirstOrDefault(x => string.Equals(x.c, column.Name, StringComparison.OrdinalIgnoreCase)).i;
-                        var referencedCol = sourceIdx < fk.ReferencedColumns.Count
-                            ? fk.ReferencedColumns[sourceIdx]
+                            .FirstOrDefault(x => string.Equals(x.c, column.Name, StringComparison.OrdinalIgnoreCase));
+                        var foundIdx = sourceMatch.c is not null ? sourceMatch.i : -1;
+                        var referencedCol = foundIdx >= 0 && foundIdx < fk.ReferencedColumns.Count
+                            ? fk.ReferencedColumns[foundIdx]
                             : column.Name;
                         value = parentRow.TryGetValue(referencedCol, out var refVal) ? refVal : null;
                     }
                     else
                     {
                         value = await GenerateColumnValueAsync(
-                            table, column, rowIndex * maxAttempts + attempt, rules, row, keyPool, cancellationToken)
+                            table, column, HashSeed(rowIndex, attempt), rules, row, keyPool, cancellationToken)
                             .ConfigureAwait(false);
                     }
 
@@ -84,8 +85,9 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
                         .OrderBy(static c => c, StringComparer.OrdinalIgnoreCase)
                         .ToArray();
 
-                    // Skip uniqueness enforcement when any column in the constraint is NULL.
-                    if (orderedCols.Any(c => row.TryGetValue(c, out var v) && v is null))
+                    // Skip uniqueness enforcement when any column in the constraint is NULL or missing from the row.
+                    // SQL semantics: NULL values are never considered equal for uniqueness purposes.
+                    if (orderedCols.Any(c => !row.TryGetValue(c, out var v) || v is null))
                     {
                         continue;
                     }
@@ -175,5 +177,15 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
         }
 
         return candidate;
+    }
+
+    /// <summary>
+    /// Combines rowIndex and attempt into a single bounded integer seed to avoid integer overflow
+    /// for large datasets and keep values deterministic.
+    /// </summary>
+    private static int HashSeed(int rowIndex, int attempt)
+    {
+        var hash = HashCode.Combine(rowIndex, attempt);
+        return hash < 0 ? -(hash + 1) : hash; // ensure non-negative
     }
 }

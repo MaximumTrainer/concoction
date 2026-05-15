@@ -56,7 +56,7 @@ public sealed class ConstraintEvaluator : IConstraintEvaluator
                         return (key: (string?)null, index);
                     }
 
-                    var key = string.Join('|', columnValues.Select(static v => v!.ToString()));
+                    var key = string.Join('|', columnValues.Select(static v => v?.ToString() ?? string.Empty));
                     return (key, index);
                 })
                 .Where(static x => x.key is not null)
