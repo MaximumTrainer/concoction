@@ -13,5 +13,22 @@ public enum DataKind
     Date,
     DateTime,
     Json,
-    Binary
+    Binary,
+
+    // Semantic kinds added in issue #14
+    Email,
+    Phone,
+    Name,
+    FirstName,
+    LastName,
+    Address,
+    PostalCode,
+    CountryCode,
+    Url,
+    IpAddress,
+    Currency,
+    CompanyName,
+    Text,
+    Uuid,
+    TimestampTz
 }

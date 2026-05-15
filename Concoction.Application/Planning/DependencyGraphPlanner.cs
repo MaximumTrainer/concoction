@@ -10,6 +10,7 @@ public sealed class DependencyGraphPlanner : IGenerationPlanner
         var tableNames = schema.Tables.Select(static t => t.QualifiedName).OrderBy(static n => n, StringComparer.Ordinal).ToArray();
         var edges = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         var inDegree = new Dictionary<string, int>(StringComparer.Ordinal);
+        var selfReferences = new List<string>();
 
         foreach (var table in tableNames)
         {
@@ -21,6 +22,13 @@ public sealed class DependencyGraphPlanner : IGenerationPlanner
         {
             foreach (var fk in table.ForeignKeys)
             {
+                // Skip self-references — they are handled via nullable FK backfill, not ordering.
+                if (string.Equals(fk.ReferencedTable, table.QualifiedName, StringComparison.Ordinal))
+                {
+                    selfReferences.Add(table.QualifiedName);
+                    continue;
+                }
+
                 if (edges.TryGetValue(fk.ReferencedTable, out var children) && children.Add(table.QualifiedName))
                 {
                     inDegree[table.QualifiedName]++;
@@ -45,15 +53,27 @@ public sealed class DependencyGraphPlanner : IGenerationPlanner
             }
         }
 
-        if (ordered.Count == tableNames.Length)
+        var diagnostics = new List<string>();
+
+        if (selfReferences.Count > 0)
         {
-            return new GenerationPlan(ordered, [], []);
+            var distinct = selfReferences.Distinct(StringComparer.Ordinal).OrderBy(static x => x, StringComparer.Ordinal).ToArray();
+            diagnostics.Add($"Self-referencing tables detected (FK backfill deferred): {string.Join(", ", distinct)}");
         }
 
+        if (ordered.Count == tableNames.Length)
+        {
+            return new GenerationPlan(ordered, [], diagnostics);
+        }
+
+        // Cycle detected: append cycle tables in deterministic order so generation still proceeds
+        // (cyclic FK columns must be nullable to allow deferred backfill).
         var cycleTables = inDegree.Where(static x => x.Value > 0).Select(static x => x.Key).OrderBy(static x => x, StringComparer.Ordinal).ToArray();
+        diagnostics.Add($"Cycle detected among tables: {string.Join(", ", cycleTables)}");
+
         return new GenerationPlan(
             ordered.Concat(cycleTables).ToArray(),
             [cycleTables],
-            [$"Cycle detected among tables: {string.Join(", ", cycleTables)}"]);
+            diagnostics);
     }
 }

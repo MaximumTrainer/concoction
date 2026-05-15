@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="Concoction.Api/Concoction.Api.csproj" />
   <Project Path="Concoction.Application/Concoction.Application.csproj" />
   <Project Path="Concoction.Cli/Concoction.Cli.csproj" />
   <Project Path="Concoction.Domain/Concoction.Domain.csproj" />

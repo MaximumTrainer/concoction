@@ -30,7 +30,7 @@ public sealed class SyntheticDataOrchestrator(
 
             foreach (var column in table.Columns)
             {
-                compliance.Add(sensitiveFieldPolicy.Evaluate(table.QualifiedName, column));
+                compliance.Add(sensitiveFieldPolicy.Evaluate(table.QualifiedName, column, request.ComplianceProfile));
             }
 
             var rowCount = request.RequestedRowCounts.TryGetValue(table.QualifiedName, out var requested)

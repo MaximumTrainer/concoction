@@ -6,7 +6,8 @@ public sealed record GenerationRequest(
     DatabaseSchema Schema,
     IReadOnlyDictionary<string, int> RequestedRowCounts,
     long Seed,
-    RuleConfiguration? Rules = null);
+    RuleConfiguration? Rules = null,
+    ComplianceProfile ComplianceProfile = ComplianceProfile.Default);
 
 public sealed record TableData(string Table, IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows);
 
@@ -33,9 +34,40 @@ public sealed record RunSummary(
     int ValidationIssueCount,
     IReadOnlyList<string> Messages);
 
+/// <summary>Records the compliance decision made for a single column, including the source of the strategy.</summary>
 public sealed record ComplianceDecision(
     string Table,
     string Column,
     SensitiveFieldStrategy Strategy,
     string Classification,
-    string Reason);
+    string Reason,
+    StrategySource Source = StrategySource.None);
+
+/// <summary>Run lifecycle entity tracking status and reproducibility metadata for a generation run.</summary>
+public sealed record DatasetRun(
+    Guid Id,
+    RunStatus Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt,
+    long Seed,
+    Guid? SchemaSnapshotId,
+    Guid? ProfileSnapshotId,
+    IReadOnlyDictionary<string, int> RequestedRowCounts,
+    IReadOnlyDictionary<string, string>? ArtifactChecksums = null,
+    IReadOnlyList<string>? ArtifactPaths = null,
+    int ValidationIssueCount = 0,
+    string? FailureReason = null);
+
+/// <summary>Manifest capturing full reproducibility and lineage metadata for a completed run.</summary>
+public sealed record RunManifest(
+    Guid RunId,
+    long Seed,
+    Guid? SchemaSnapshotId,
+    Guid? ProfileSnapshotId,
+    IReadOnlyDictionary<string, int> RequestedRowCounts,
+    IReadOnlyDictionary<string, int> ActualRowCounts,
+    int ValidationIssueCount,
+    IReadOnlyDictionary<string, string> ArtifactChecksums,
+    IReadOnlyList<string> ArtifactPaths,
+    DateTimeOffset GeneratedAt);

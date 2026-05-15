@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Text.Json;
 using Concoction.Application.Abstractions;
+using Concoction.Domain.Enums;
 using Concoction.Domain.Models;
 using Concoction.Infrastructure.Configuration;
 using Concoction.Infrastructure.DependencyInjection;
@@ -16,6 +17,7 @@ var seedOption = new Option<long>("--seed", getDefaultValue: () => 42L, descript
 var rulesOption = new Option<string?>("--rules", "Path to rule configuration JSON/YAML");
 var outputOption = new Option<string>("--output", getDefaultValue: () => "./artifacts", description: "Output directory");
 var rowsOption = new Option<int>("--rows", getDefaultValue: () => 10, description: "Default row count per table");
+var complianceOption = new Option<ComplianceProfile>("--compliance-profile", getDefaultValue: () => ComplianceProfile.Default, description: "Compliance profile: Default, Healthcare (HIPAA), Finance (PCI)");
 
 var discover = new Command("discover", "Discover schema")
 {
@@ -32,10 +34,10 @@ discover.SetHandler(async (provider, connection, database, seed) =>
 
 var generate = new Command("generate", "Discover + generate + export")
 {
-    providerOption, connectionOption, dbNameOption, seedOption, rulesOption, outputOption, rowsOption
+    providerOption, connectionOption, dbNameOption, seedOption, rulesOption, outputOption, rowsOption, complianceOption
 };
 
-generate.SetHandler(async (provider, connection, database, seed, rules, output, rows) =>
+generate.SetHandler(async (provider, connection, database, seed, rules, output, rows, compliance) =>
 {
     using var host = BuildHost(provider, connection, database, seed);
     var services = host.Services;
@@ -67,7 +69,7 @@ generate.SetHandler(async (provider, connection, database, seed, rules, output, 
         loadedRules = ruleService.Merge(emptyConfig, emptyConfig, loadedRules);
     }
 
-    var request = new GenerationRequest(schema, rowCounts, seed, loadedRules);
+    var request = new GenerationRequest(schema, rowCounts, seed, loadedRules, compliance);
     var (result, summary) = await orchestrator.GenerateAsync(request);
 
     foreach (var exporter in exporters)
@@ -86,7 +88,7 @@ generate.SetHandler(async (provider, connection, database, seed, rules, output, 
         Console.Error.WriteLine($"Validation issues: {result.ValidationIssues.Count}");
         Environment.ExitCode = 2;
     }
-}, providerOption, connectionOption, dbNameOption, seedOption, rulesOption, outputOption, rowsOption);
+}, providerOption, connectionOption, dbNameOption, seedOption, rulesOption, outputOption, rowsOption, complianceOption);
 
 var validate = new Command("validate", "Generate and return validation summary")
 {
@@ -150,7 +152,30 @@ export.SetHandler(async (provider, connection, database, seed, output, rows, for
     }
 }, providerOption, connectionOption, dbNameOption, seedOption, outputOption, rowsOption, formatOption);
 
+var discoverProfile = new Command("discover-profile", "Profile schema data distribution and surface diagnostics")
+{
+    providerOption, connectionOption, dbNameOption, seedOption
+};
+
+discoverProfile.SetHandler(async (provider, connection, database, seed) =>
+{
+    using var host = BuildHost(provider, connection, database, seed);
+    var orchestrator = host.Services.GetRequiredService<ISyntheticDataOrchestrator>();
+    var reviewService = host.Services.GetRequiredService<ISchemaReviewService>();
+    var schema = await orchestrator.DiscoverAsync();
+    var diagnostics = reviewService.Review(schema);
+
+    Console.WriteLine(JsonSerializer.Serialize(diagnostics, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+
+    if (diagnostics.Diagnostics.Count > 0)
+    {
+        Console.Error.WriteLine($"{diagnostics.Diagnostics.Count} diagnostic(s) found. See output for details.");
+        Environment.ExitCode = 1;
+    }
+}, providerOption, connectionOption, dbNameOption, seedOption);
+
 root.AddCommand(discover);
+root.AddCommand(discoverProfile);
 root.AddCommand(generate);
 root.AddCommand(validate);
 root.AddCommand(export);
