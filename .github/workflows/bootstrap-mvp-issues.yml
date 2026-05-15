@@ -32,7 +32,7 @@ jobs:
 
             const manifestPath = process.env.MANIFEST_PATH;
             if (!manifestPath) {
-              core.setFailed("The manifest_path input is required.");
+              core.setFailed("Internal error: manifest_path was not provided.");
               return;
             }
 
@@ -105,7 +105,7 @@ jobs:
                   repo,
                   name: labelName,
                   color: hashLabelNameToColor(labelName),
-                  description: "Created by the Bootstrap MVP Issues workflow."
+                  description: "Created automatically by the issue bootstrap workflow."
                 });
               }
             }
@@ -183,7 +183,6 @@ jobs:
                   owner,
                   repo,
                   issue_number: existingIssue.number,
-                  title,
                   body,
                   labels
                 });
