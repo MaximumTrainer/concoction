@@ -190,65 +190,20 @@ To override inference, use a [Rules DSL](#rules-dsl) entry with the `strategy` f
 
 ## Rules DSL
 
-Rules files let you override the generation strategy for specific tables and columns. They support JSON or YAML (version `"1"`).
+The Rules DSL lets you override every aspect of value generation on a per-column basis. Rules are stored in a YAML or JSON file (version `"1"`) and passed to the CLI with `--rules <path>`. See the dedicated [Rules DSL reference](how-to/rules-dsl.md) for a full field listing.
 
-### Minimal Example
+### How Rules Work
 
-```yaml
-version: "1"
-tables:
-  - table: "public.users"
-    columns:
-      - column: "email"
-        strategy: "Email"
-      - column: "status"
-        fixedValue: "active"
-```
+Without a rules file Concoction infers a `DataKind` for each column from its SQL type and column name. Rules let you override that inference at any granularity:
 
-### Full Field Reference
+- Force a specific **strategy** (any `DataKind` name) on a column regardless of its SQL type.
+- Emit a **fixed value** for every row.
+- Control what fraction of rows are **null**.
+- Choose values from a **weighted distribution** of literals.
+- Assign strategies to individual **paths inside a JSON column**.
+- Shift the deterministic seed for a column to **decorrelate** related columns.
 
-| Field | Type | Description |
-|---|---|---|
-| `version` | `string` | Must be `"1"`. |
-| `tables[].table` | `string` | Qualified table name, e.g. `"public.users"` or `"main.orders"`. |
-| `tables[].columns[].column` | `string` | Column name within the table. |
-| `columns[].strategy` | `string` | `DataKind` name to use for generation (e.g. `"Email"`, `"Integer"`). |
-| `columns[].fixedValue` | `any` | Emit this exact value for every row. Overrides `strategy`. |
-| `columns[].nullRate` | `number [0,1]` | Fraction of rows that should emit `null`. |
-| `columns[].seedOffset` | `integer` | Added to the global seed for this column's generator. |
-| `columns[].distribution` | `map<string,number>` | Weighted distribution of discrete values. Weights must sum to ≤ 1.0. |
-| `columns[].jsonPaths` | `array` | Path-level overrides for JSON/JSONB columns. See [JSON Path Strategies](#json-path-strategies). |
-
-### Distribution Example
-
-```yaml
-- column: "tier"
-  distribution:
-    bronze: 0.5
-    silver: 0.3
-    gold: 0.2
-```
-
-This emits `"bronze"` 50% of the time, `"silver"` 30%, and `"gold"` 20%.
-
-Combine with `nullRate` to produce nulls in addition to distributed values:
-
-```yaml
-- column: "discount"
-  nullRate: 0.1
-  distribution:
-    silver: 0.5
-    gold: 0.3
-    platinum: 0.2
-```
-
-10% of rows get `null`; the remaining 90% are distributed across the three tiers.
-
-### Precedence Merge
-
-Rules are merged in order: **global defaults < project defaults < table rules < column rules**. More-specific rules win. The merge is performed by `IRuleConfigurationService.Merge()`.
-
-### Loading Rules in CLI
+### CLI Usage
 
 ```bash
 dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- generate \
@@ -260,24 +215,168 @@ dotnet run --project ./Concoction.Cli/Concoction.Cli.csproj -- generate \
 
 If the rules file fails validation, errors are printed to stderr and the process exits with code 1.
 
-### JSON Format
+### File Format
 
-The same rules file in JSON:
+YAML and JSON are interchangeable. Use whichever your team prefers.
+
+```yaml
+# YAML (rules.yaml)
+version: "1"
+tables:
+  - table: "public.users"
+    columns:
+      - column: "email"
+        strategy: "Email"
+```
 
 ```json
+// JSON (rules.json)
 {
   "version": "1",
   "tables": [
     {
       "table": "public.users",
-      "columns": [
-        { "column": "email", "strategy": "Email" },
-        { "column": "status", "fixedValue": "active" },
-        { "column": "tier", "distribution": { "bronze": 0.5, "silver": 0.3, "gold": 0.2 } }
-      ]
+      "columns": [{ "column": "email", "strategy": "Email" }]
     }
   ]
 }
+```
+
+The `table` name must be fully qualified with its schema, matching the value Concoction uses in its schema discovery output: `"public.users"` for PostgreSQL or `"main.users"` for SQLite.
+
+### Column Rule Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `column` | `string` | Column name. Required. |
+| `strategy` | `string` | `DataKind` name to use (e.g. `"Email"`, `"Integer"`). Overrides inferred kind. |
+| `fixedValue` | `any` | Emit this exact value every row. Overrides everything else. |
+| `nullRate` | `number [0,1]` | Fraction of rows emitting `null`. Only applies to nullable columns. |
+| `seedOffset` | `integer` | Added to the global seed for this column's generator. Use to decorrelate columns. |
+| `distribution` | `map<string,number>` | Weighted discrete value distribution. Weights need not sum to 1.0. |
+| `jsonPaths` | `array` | Per-path strategies for JSON/JSONB columns. See [JSON Path Strategies](#json-path-strategies). |
+
+### strategy — Override the Inferred Kind
+
+```yaml
+- column: "user_type"
+  strategy: "String"        # force random string even if inferred as something else
+
+- column: "profile_pic_url"
+  strategy: "Url"           # emit a realistic URL on a TEXT column
+```
+
+### fixedValue — Constant for Every Row
+
+```yaml
+- column: "status"
+  fixedValue: "active"
+
+- column: "is_verified"
+  fixedValue: true
+
+- column: "score"
+  fixedValue: 100
+```
+
+`fixedValue` has the highest precedence — it overrides `strategy`, `distribution`, and compliance profile masking.
+
+### nullRate — Probabilistic Nulls
+
+```yaml
+- column: "middle_name"
+  nullRate: 0.7         # 70 % of rows will be null
+```
+
+Combine with `distribution`: `nullRate` is evaluated first, and non-null rows draw from the distribution.
+
+```yaml
+- column: "tier"
+  nullRate: 0.1
+  distribution:
+    silver: 0.5
+    gold:   0.3
+    platinum: 0.2
+# Result: 10 % null, 45 % silver, 27 % gold, 18 % platinum
+```
+
+### seedOffset — Decorrelate Columns
+
+All columns in the same table share the same base seed. If two columns of the same kind would produce the same sequence, add different `seedOffset` values.
+
+```yaml
+- column: "first_name"
+  strategy: "FirstName"
+  seedOffset: 1
+
+- column: "last_name"
+  strategy: "LastName"
+  seedOffset: 2
+```
+
+### distribution — Weighted Literals
+
+```yaml
+- column: "country"
+  distribution:
+    US: 0.6
+    GB: 0.2
+    DE: 0.1
+    FR: 0.1
+```
+
+Weights are normalised at generation time. If they sum to less than 1.0, the remainder generates a value from the column's inferred or specified strategy.
+
+### Precedence Merge
+
+Rules are merged in order: **global defaults < project defaults < table rules < column rules**. More-specific rules win. `fixedValue` always takes the highest precedence within a column rule. The merge is performed by `IRuleConfigurationService.Merge()`.
+
+### Complete Example
+
+```yaml
+version: "1"
+tables:
+  - table: "public.users"
+    columns:
+      - column: "email"
+        strategy: "Email"
+      - column: "name"
+        strategy: "Name"
+      - column: "status"
+        fixedValue: "active"
+      - column: "tier"
+        nullRate: 0.1
+        distribution:
+          bronze: 0.5
+          silver: 0.3
+          gold: 0.2
+      - column: "first_name"
+        strategy: "FirstName"
+        seedOffset: 1
+      - column: "last_name"
+        strategy: "LastName"
+        seedOffset: 2
+      - column: "preferences"
+        jsonPaths:
+          - path: "$.email"
+            strategy: "Email"
+          - path: "$.score"
+            strategy: "Integer"
+          - path: "$.optional"
+            strategy: "String"
+            nullRate: 0.5
+
+  - table: "public.orders"
+    columns:
+      - column: "status"
+        distribution:
+          pending:    0.4
+          processing: 0.3
+          shipped:    0.2
+          cancelled:  0.1
+      - column: "notes"
+        nullRate: 0.6
+        strategy: "Text"
 ```
 
 ---

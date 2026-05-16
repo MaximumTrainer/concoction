@@ -128,14 +128,123 @@
 </table>
 
 <h2 id="rules">5. Rules DSL</h2>
-<p>Rules files let you override generation strategies for specific tables and columns. Supported in YAML or JSON, version <code>"1"</code>.</p>
-<h3>Example</h3>
+<p>The Rules DSL lets you override every aspect of value generation on a per-column basis. Rules are stored in a YAML or JSON file (version <code>"1"</code>) and passed to the CLI with <code>--rules &lt;path&gt;</code>. See the dedicated <a href="how-to/rules-dsl.html">Rules DSL reference</a> for a full field listing.</p>
+
+<h3>How Rules Work</h3>
+<p>Without a rules file Concoction infers a <code>DataKind</code> for each column from its SQL type and column name. Rules let you override that inference at any granularity:</p>
+<ul>
+  <li>Force a specific <strong>strategy</strong> (any <code>DataKind</code> name) on a column regardless of its SQL type.</li>
+  <li>Emit a <strong>fixed value</strong> for every row.</li>
+  <li>Control what fraction of rows are <strong>null</strong>.</li>
+  <li>Choose values from a <strong>weighted distribution</strong> of literals.</li>
+  <li>Assign strategies to individual <strong>paths inside a JSON column</strong>.</li>
+  <li>Shift the deterministic seed for a column to <strong>decorrelate</strong> related columns.</li>
+</ul>
+
+<h3>CLI Usage</h3>
+<pre><code>dotnet run --project ./Concoction.Cli -- generate \
+  --provider sqlite \
+  --connection "Data Source=./mydb.db" \
+  --rules ./rules.yaml \
+  --rows 50</code></pre>
+<p>If the rules file fails validation, errors are printed to stderr and the process exits with code&nbsp;1.</p>
+
+<h3>File Format</h3>
+<p>YAML and JSON are interchangeable. Use whichever your team prefers.</p>
+<pre><code># YAML (rules.yaml)
+version: "1"
+tables:
+  - table: "public.users"
+    columns:
+      - column: "email"
+        strategy: "Email"</code></pre>
+<pre><code>// JSON (rules.json)
+{
+  "version": "1",
+  "tables": [
+    {
+      "table": "public.users",
+      "columns": [{ "column": "email", "strategy": "Email" }]
+    }
+  ]
+}</code></pre>
+<p>The <code>table</code> name must be fully qualified with its schema, matching the value Concoction uses in its schema discovery output: <code>"public.users"</code> for PostgreSQL or <code>"main.users"</code> for SQLite.</p>
+
+<h3>Column Rule Fields</h3>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>column</code></td><td>string</td><td>Column name. Required.</td></tr>
+  <tr><td><code>strategy</code></td><td>string</td><td>DataKind name to use (e.g. <code>"Email"</code>, <code>"Integer"</code>). Overrides inferred kind.</td></tr>
+  <tr><td><code>fixedValue</code></td><td>any</td><td>Emit this exact value every row. Overrides everything else.</td></tr>
+  <tr><td><code>nullRate</code></td><td>number [0,1]</td><td>Fraction of rows emitting <code>null</code>. Only applies to nullable columns.</td></tr>
+  <tr><td><code>seedOffset</code></td><td>integer</td><td>Added to the global seed for this column's generator. Use to decorrelate columns.</td></tr>
+  <tr><td><code>distribution</code></td><td>map&lt;string,number&gt;</td><td>Weighted discrete value distribution. Weights need not sum to 1.0.</td></tr>
+  <tr><td><code>jsonPaths</code></td><td>array</td><td>Per-path strategies for JSON/JSONB columns. See <a href="#jsonpaths">§6</a>.</td></tr>
+</table>
+
+<h3>strategy — Override the Inferred Kind</h3>
+<pre><code>- column: "user_type"
+  strategy: "String"       # force random string even if inferred as something else
+
+- column: "profile_pic_url"
+  strategy: "Url"          # emit a realistic URL on a TEXT column</code></pre>
+
+<h3>fixedValue — Constant for Every Row</h3>
+<pre><code>- column: "status"
+  fixedValue: "active"
+
+- column: "is_verified"
+  fixedValue: true
+
+- column: "score"
+  fixedValue: 100</code></pre>
+<p><code>fixedValue</code> has the highest precedence — it overrides <code>strategy</code>, <code>distribution</code>, and compliance profile masking.</p>
+
+<h3>nullRate — Probabilistic Nulls</h3>
+<pre><code>- column: "middle_name"
+  nullRate: 0.7         # 70 % of rows will be null</code></pre>
+<p>Combine with <code>distribution</code>: <code>nullRate</code> is evaluated first, and non-null rows draw from the distribution.</p>
+<pre><code>- column: "tier"
+  nullRate: 0.1
+  distribution:
+    silver: 0.5
+    gold:   0.3
+    platinum: 0.2
+# Result: 10 % null, 45 % silver, 27 % gold, 18 % platinum</code></pre>
+
+<h3>seedOffset — Decorrelate Columns</h3>
+<p>All columns in the same table share the same base seed. If two columns of the same kind would produce the same sequence, add different <code>seedOffset</code> values.</p>
+<pre><code>- column: "first_name"
+  strategy: "FirstName"
+  seedOffset: 1
+
+- column: "last_name"
+  strategy: "LastName"
+  seedOffset: 2</code></pre>
+
+<h3>distribution — Weighted Literals</h3>
+<pre><code>- column: "country"
+  distribution:
+    US: 0.6
+    GB: 0.2
+    DE: 0.1
+    FR: 0.1</code></pre>
+<p>Weights are normalised at generation time. If they sum to less than 1.0, the remainder generates a value from the column's inferred or specified strategy.</p>
+
+<h3>Precedence</h3>
+<p>When multiple rule sources are combined, Concoction merges them in priority order:</p>
+<pre><code>global defaults  &lt;  project defaults  &lt;  table rules  &lt;  column rules</code></pre>
+<p>More specific rules win. <code>fixedValue</code> always takes the highest precedence within a column rule.</p>
+
+<h3>Complete Example</h3>
 <pre><code>version: "1"
 tables:
   - table: "public.users"
     columns:
       - column: "email"
         strategy: "Email"
+      - column: "name"
+        strategy: "Name"
       - column: "status"
         fixedValue: "active"
       - column: "tier"
@@ -143,20 +252,34 @@ tables:
         distribution:
           bronze: 0.5
           silver: 0.3
-          gold: 0.2</code></pre>
-<h3>Column Rule Fields</h3>
-<table>
-  <tr><th>Field</th><th>Type</th><th>Description</th></tr>
-  <tr><td><code>column</code></td><td>string</td><td>Column name. Required.</td></tr>
-  <tr><td><code>strategy</code></td><td>string</td><td>DataKind name to use.</td></tr>
-  <tr><td><code>fixedValue</code></td><td>any</td><td>Emit this exact value every row.</td></tr>
-  <tr><td><code>nullRate</code></td><td>number [0,1]</td><td>Fraction of rows emitting null.</td></tr>
-  <tr><td><code>seedOffset</code></td><td>integer</td><td>Added to the global seed for this column.</td></tr>
-  <tr><td><code>distribution</code></td><td>map&lt;string,number&gt;</td><td>Weighted discrete value distribution.</td></tr>
-  <tr><td><code>jsonPaths</code></td><td>array</td><td>Per-path strategies for JSON/JSONB columns.</td></tr>
-</table>
-<h3>Precedence</h3>
-<p>global defaults &lt; project defaults &lt; table rules &lt; column rules. More specific rules win. <code>fixedValue</code> always takes the highest precedence.</p>
+          gold: 0.2
+      - column: "first_name"
+        strategy: "FirstName"
+        seedOffset: 1
+      - column: "last_name"
+        strategy: "LastName"
+        seedOffset: 2
+      - column: "preferences"
+        jsonPaths:
+          - path: "$.email"
+            strategy: "Email"
+          - path: "$.score"
+            strategy: "Integer"
+          - path: "$.optional"
+            strategy: "String"
+            nullRate: 0.5
+
+  - table: "public.orders"
+    columns:
+      - column: "status"
+        distribution:
+          pending:    0.4
+          processing: 0.3
+          shipped:    0.2
+          cancelled:  0.1
+      - column: "notes"
+        nullRate: 0.6
+        strategy: "Text"</code></pre>
 
 <h2 id="jsonpaths">6. JSON Path Strategies</h2>
 <p>For JSON/JSONB columns, assign strategies to individual paths using dollar-dot notation.</p>
