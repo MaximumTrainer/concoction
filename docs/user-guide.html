@@ -202,7 +202,7 @@ tables:
 
 <h3>nullRate — Probabilistic Nulls</h3>
 <pre><code>- column: "middle_name"
-  nullRate: 0.7         # 70 % of rows will be null</code></pre>
+  nullRate: 0.7         # 70% of rows will be null</code></pre>
 <p>Combine with <code>distribution</code>: <code>nullRate</code> is evaluated first, and non-null rows draw from the distribution.</p>
 <pre><code>- column: "tier"
   nullRate: 0.1
@@ -210,7 +210,7 @@ tables:
     silver: 0.5
     gold:   0.3
     platinum: 0.2
-# Result: 10 % null, 45 % silver, 27 % gold, 18 % platinum</code></pre>
+# Result: 10% null, 45% silver, 27% gold, 18% platinum</code></pre>
 
 <h3>seedOffset — Decorrelate Columns</h3>
 <p>All columns in the same table share the same base seed. If two columns of the same kind would produce the same sequence, add different <code>seedOffset</code> values.</p>

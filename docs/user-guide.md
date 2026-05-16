@@ -285,7 +285,7 @@ The `table` name must be fully qualified with its schema, matching the value Con
 
 ```yaml
 - column: "middle_name"
-  nullRate: 0.7         # 70 % of rows will be null
+  nullRate: 0.7         # 70% of rows will be null
 ```
 
 Combine with `distribution`: `nullRate` is evaluated first, and non-null rows draw from the distribution.
@@ -297,7 +297,7 @@ Combine with `distribution`: `nullRate` is evaluated first, and non-null rows dr
     silver: 0.5
     gold:   0.3
     platinum: 0.2
-# Result: 10 % null, 45 % silver, 27 % gold, 18 % platinum
+# Result: 10% null, 45% silver, 27% gold, 18% platinum
 ```
 
 ### seedOffset — Decorrelate Columns
