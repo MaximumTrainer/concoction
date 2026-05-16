@@ -250,9 +250,9 @@ The `table` name must be fully qualified with its schema, matching the value Con
 |---|---|---|
 | `column` | `string` | Column name. Required. |
 | `strategy` | `string` | `DataKind` name to use (e.g. `"Email"`, `"Integer"`). Overrides inferred kind. |
-| `fixedValue` | `any` | Emit this exact value every row. Overrides everything else. |
+| `fixedValue` | `any` | Emit this exact value before compliance masking is applied. Overrides generation-time strategy/distribution logic. |
 | `nullRate` | `number [0,1]` | Fraction of rows emitting `null`. Only applies to nullable columns. |
-| `seedOffset` | `integer` | Added to the global seed for this column's generator. Use to decorrelate columns. |
+| `seedOffset` | `integer` | Reserved for future deterministic-seed controls. Currently parsed/validated but not applied during generation. |
 | `distribution` | `map<string,number>` | Weighted discrete value distribution. Weights need not sum to 1.0. |
 | `jsonPaths` | `array` | Per-path strategies for JSON/JSONB columns. See [JSON Path Strategies](#json-path-strategies). |
 
@@ -279,7 +279,8 @@ The `table` name must be fully qualified with its schema, matching the value Con
   fixedValue: 100
 ```
 
-`fixedValue` has the highest precedence — it overrides `strategy`, `distribution`, and compliance profile masking.
+`fixedValue` has the highest precedence during generation — it overrides `strategy` and `distribution`.  
+Compliance masking is applied afterward and may still transform the emitted value for sensitive columns.
 
 ### nullRate — Probabilistic Nulls
 
@@ -300,9 +301,10 @@ Combine with `distribution`: `nullRate` is evaluated first, and non-null rows dr
 # Result: 10% null, 45% silver, 27% gold, 18% platinum
 ```
 
-### seedOffset — Decorrelate Columns
+### seedOffset — Current Status
 
-All columns in the same table share the same base seed. If two columns of the same kind would produce the same sequence, add different `seedOffset` values.
+`seedOffset` is accepted in the DSL but is not currently consumed by the generator pipeline.  
+Use it as forward-compatible metadata for now; it does not change output in the current release.
 
 ```yaml
 - column: "first_name"
@@ -325,11 +327,13 @@ All columns in the same table share the same base seed. If two columns of the sa
     FR: 0.1
 ```
 
-Weights are normalised at generation time. If they sum to less than 1.0, the remainder generates a value from the column's inferred or specified strategy.
+Weights are normalised at generation time. Generation always samples from the `distribution` entries themselves (no fallback remainder path).
 
 ### Precedence Merge
 
-Rules are merged in order: **global defaults < project defaults < table rules < column rules**. More-specific rules win. `fixedValue` always takes the highest precedence within a column rule. The merge is performed by `IRuleConfigurationService.Merge()`.
+`IRuleConfigurationService.Merge()` combines exactly three configuration layers in this order: **defaults < schema-derived < user**.  
+For each table/column key, later layers replace the entire `ColumnRule` entry from earlier layers (not a per-field merge).  
+Within an active column rule during generation, `fixedValue` has highest precedence.
 
 ### Complete Example
 

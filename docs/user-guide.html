@@ -175,9 +175,9 @@ tables:
   <tr><th>Field</th><th>Type</th><th>Description</th></tr>
   <tr><td><code>column</code></td><td>string</td><td>Column name. Required.</td></tr>
   <tr><td><code>strategy</code></td><td>string</td><td>DataKind name to use (e.g. <code>"Email"</code>, <code>"Integer"</code>). Overrides inferred kind.</td></tr>
-  <tr><td><code>fixedValue</code></td><td>any</td><td>Emit this exact value every row. Overrides everything else.</td></tr>
+  <tr><td><code>fixedValue</code></td><td>any</td><td>Emit this exact value before compliance masking is applied. Overrides generation-time strategy/distribution logic.</td></tr>
   <tr><td><code>nullRate</code></td><td>number [0,1]</td><td>Fraction of rows emitting <code>null</code>. Only applies to nullable columns.</td></tr>
-  <tr><td><code>seedOffset</code></td><td>integer</td><td>Added to the global seed for this column's generator. Use to decorrelate columns.</td></tr>
+  <tr><td><code>seedOffset</code></td><td>integer</td><td>Reserved for future deterministic-seed controls. Currently parsed/validated but not applied during generation.</td></tr>
   <tr><td><code>distribution</code></td><td>map&lt;string,number&gt;</td><td>Weighted discrete value distribution. Weights need not sum to 1.0.</td></tr>
   <tr><td><code>jsonPaths</code></td><td>array</td><td>Per-path strategies for JSON/JSONB columns. See <a href="#jsonpaths">§6</a>.</td></tr>
 </table>
@@ -198,7 +198,8 @@ tables:
 
 - column: "score"
   fixedValue: 100</code></pre>
-<p><code>fixedValue</code> has the highest precedence — it overrides <code>strategy</code>, <code>distribution</code>, and compliance profile masking.</p>
+<p><code>fixedValue</code> has the highest precedence during generation — it overrides <code>strategy</code> and <code>distribution</code>.<br />
+Compliance masking is applied afterward and may still transform the emitted value for sensitive columns.</p>
 
 <h3>nullRate — Probabilistic Nulls</h3>
 <pre><code>- column: "middle_name"
@@ -212,8 +213,9 @@ tables:
     platinum: 0.2
 # Result: 10% null, 45% silver, 27% gold, 18% platinum</code></pre>
 
-<h3>seedOffset — Decorrelate Columns</h3>
-<p>All columns in the same table share the same base seed. If two columns of the same kind would produce the same sequence, add different <code>seedOffset</code> values.</p>
+<h3>seedOffset — Current Status</h3>
+<p><code>seedOffset</code> is accepted in the DSL but is not currently consumed by the generator pipeline.<br />
+Use it as forward-compatible metadata for now; it does not change output in the current release.</p>
 <pre><code>- column: "first_name"
   strategy: "FirstName"
   seedOffset: 1
@@ -229,12 +231,13 @@ tables:
     GB: 0.2
     DE: 0.1
     FR: 0.1</code></pre>
-<p>Weights are normalised at generation time. If they sum to less than 1.0, the remainder generates a value from the column's inferred or specified strategy.</p>
+<p>Weights are normalised at generation time. Generation always samples from the <code>distribution</code> entries themselves (no fallback remainder path).</p>
 
 <h3>Precedence</h3>
-<p>When multiple rule sources are combined, Concoction merges them in priority order:</p>
-<pre><code>global defaults  &lt;  project defaults  &lt;  table rules  &lt;  column rules</code></pre>
-<p>More specific rules win. <code>fixedValue</code> always takes the highest precedence within a column rule.</p>
+<p><code>IRuleConfigurationService.Merge()</code> combines exactly three configuration layers in this order:</p>
+<pre><code>defaults  &lt;  schema-derived  &lt;  user</code></pre>
+<p>For each table/column key, later layers replace the entire <code>ColumnRule</code> entry from earlier layers (not a per-field merge).<br />
+Within an active column rule during generation, <code>fixedValue</code> has highest precedence.</p>
 
 <h3>Complete Example</h3>
 <pre><code>version: "1"
