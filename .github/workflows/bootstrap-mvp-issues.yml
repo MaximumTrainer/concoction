@@ -7,6 +7,12 @@ on:
         description: Path to the JSON issue manifest in the repository
         required: true
         default: .github/issue-manifests/concoction-mvp.json
+  push:
+    branches:
+      - main
+    paths:
+      - .github/issue-manifests/*.json
+      - .github/workflows/bootstrap-mvp-issues.yml
 
 permissions:
   contents: read
@@ -23,7 +29,7 @@ jobs:
       - name: Create or update issues from manifest
         uses: actions/github-script@v7
         env:
-          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          MANIFEST_PATH: ${{ github.event.inputs.manifest_path || '.github/issue-manifests/concoction-mvp.json' }}
         with:
           script: |
             const crypto = require("node:crypto");
