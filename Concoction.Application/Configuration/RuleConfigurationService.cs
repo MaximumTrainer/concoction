@@ -51,6 +51,34 @@ public sealed class RuleConfigurationService : IRuleConfigurationService
                         $"Valid values are: {string.Join(", ", Enum.GetNames<DataKind>())}."));
                 }
 
+                // Validate MinValue/MaxValue: both must be parseable as the same comparable type, and min <= max.
+                if (column.MinValue is not null && column.MaxValue is not null)
+                {
+                    if (double.TryParse(column.MinValue, out var minNum) && double.TryParse(column.MaxValue, out var maxNum))
+                    {
+                        if (minNum > maxNum)
+                            results.Add(new ValidationResult(
+                                $"Table '{table.Table}', column '{column.Column}': MinValue ({column.MinValue}) must not exceed MaxValue ({column.MaxValue})."));
+                    }
+                    else if (DateTimeOffset.TryParse(column.MinValue, out var minDate) && DateTimeOffset.TryParse(column.MaxValue, out var maxDate))
+                    {
+                        if (minDate > maxDate)
+                            results.Add(new ValidationResult(
+                                $"Table '{table.Table}', column '{column.Column}': MinValue ({column.MinValue}) must not exceed MaxValue ({column.MaxValue})."));
+                    }
+                }
+
+                // Validate Pattern is a valid character-class expression.
+                if (column.Pattern is not null)
+                {
+                    try { _ = new System.Text.RegularExpressions.Regex(column.Pattern); }
+                    catch (ArgumentException ex)
+                    {
+                        results.Add(new ValidationResult(
+                            $"Table '{table.Table}', column '{column.Column}': Pattern '{column.Pattern}' is not a valid regular expression: {ex.Message}."));
+                    }
+                }
+
                 if (column.JsonPaths is not null)
                 {
                     foreach (var jsonPath in column.JsonPaths)

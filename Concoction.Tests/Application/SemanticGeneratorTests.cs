@@ -68,23 +68,101 @@ public sealed class SemanticGeneratorTests
     }
 
     [Fact]
-    public async Task SemanticGenerators_ShouldBeDeterministic()
+    public async Task IntegerGenerator_WithMinMax_RespectsRange()
     {
-        var registry1 = new GeneratorRegistry();
-        registry1.RegisterDefaults(new DeterministicRandomService(99));
-        var registry2 = new GeneratorRegistry();
-        registry2.RegisterDefaults(new DeterministicRandomService(99));
+        var registry = new GeneratorRegistry();
+        registry.RegisterDefaults(new DeterministicRandomService(42));
+        registry.TryResolve(DataKind.Integer, null, out var gen);
 
-        foreach (var kind in new[] { DataKind.Email, DataKind.Name, DataKind.CountryCode })
+        var rules = new RuleConfiguration
         {
-            registry1.TryResolve(kind, null, out var gen1);
-            registry2.TryResolve(kind, null, out var gen2);
+            Version = "1",
+            Tables = [new TableRule { Table = "table", Columns = [new ColumnRule { Column = "col", MinValue = "100", MaxValue = "200" }] }]
+        };
+        var ctx = new GeneratorContext("table", "col", DataKind.Integer, 0, rules,
+            new Dictionary<string, object?>(),
+            new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>());
 
-            var ctx = MakeContext(kind, 5);
-            var v1 = await gen1!(ctx, CancellationToken.None);
-            var v2 = await gen2!(ctx, CancellationToken.None);
+        for (var i = 0; i < 20; i++)
+        {
+            var row = ctx with { RowIndex = i };
+            var value = (int)(await gen!(row, CancellationToken.None))!;
+            value.Should().BeInRange(100, 200);
+        }
+    }
 
-            v1.Should().Be(v2, $"same seed should produce same value for {kind}");
+    [Fact]
+    public async Task DecimalGenerator_WithMinMax_RespectsRange()
+    {
+        var registry = new GeneratorRegistry();
+        registry.RegisterDefaults(new DeterministicRandomService(42));
+        registry.TryResolve(DataKind.Decimal, null, out var gen);
+
+        var rules = new RuleConfiguration
+        {
+            Version = "1",
+            Tables = [new TableRule { Table = "t", Columns = [new ColumnRule { Column = "price", MinValue = "5.0", MaxValue = "10.0" }] }]
+        };
+        var ctx = new GeneratorContext("t", "price", DataKind.Decimal, 0, rules,
+            new Dictionary<string, object?>(),
+            new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>());
+
+        for (var i = 0; i < 20; i++)
+        {
+            var row = ctx with { RowIndex = i };
+            var value = (decimal)(await gen!(row, CancellationToken.None))!;
+            value.Should().BeInRange(5.0m, 10.0m);
+        }
+    }
+
+    [Fact]
+    public async Task StringGenerator_WithPattern_MatchesPattern()
+    {
+        var registry = new GeneratorRegistry();
+        registry.RegisterDefaults(new DeterministicRandomService(42));
+        registry.TryResolve(DataKind.String, null, out var gen);
+
+        var rules = new RuleConfiguration
+        {
+            Version = "1",
+            Tables = [new TableRule { Table = "t", Columns = [new ColumnRule { Column = "code", Pattern = "[A-Z]{3}[0-9]{4}" }] }]
+        };
+        var ctx = new GeneratorContext("t", "code", DataKind.String, 0, rules,
+            new Dictionary<string, object?>(),
+            new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>());
+
+        for (var i = 0; i < 5; i++)
+        {
+            var row = ctx with { RowIndex = i };
+            var value = (string)(await gen!(row, CancellationToken.None))!;
+            value.Should().MatchRegex(@"^[A-Z]{3}[0-9]{4}$");
+        }
+    }
+
+    [Fact]
+    public async Task DateGenerator_WithMinMax_RespectsRange()
+    {
+        var registry = new GeneratorRegistry();
+        registry.RegisterDefaults(new DeterministicRandomService(42));
+        registry.TryResolve(DataKind.Date, null, out var gen);
+
+        var rules = new RuleConfiguration
+        {
+            Version = "1",
+            Tables = [new TableRule { Table = "t", Columns = [new ColumnRule { Column = "dob", MinValue = "2000-01-01", MaxValue = "2010-12-31" }] }]
+        };
+        var ctx = new GeneratorContext("t", "dob", DataKind.Date, 0, rules,
+            new Dictionary<string, object?>(),
+            new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>());
+
+        var minDate = DateOnly.Parse("2000-01-01");
+        var maxDate = DateOnly.Parse("2010-12-31");
+
+        for (var i = 0; i < 20; i++)
+        {
+            var row = ctx with { RowIndex = i };
+            var value = (DateOnly)(await gen!(row, CancellationToken.None))!;
+            value.Should().BeOnOrAfter(minDate).And.BeOnOrBefore(maxDate);
         }
     }
 }

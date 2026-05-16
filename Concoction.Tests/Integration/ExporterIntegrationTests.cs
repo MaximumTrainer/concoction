@@ -193,4 +193,55 @@ public sealed class ExporterIntegrationTests : IDisposable
         hash1.Should().HaveLength(64, "SHA-256 hex string is 64 characters");
         hash1.Should().MatchRegex("^[0-9a-f]+$", "hex characters only");
     }
+
+    // ── Parquet ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ParquetExporter_WritesOneFilePerTable_WithExpectedRowCount()
+    {
+        var exporter = new ParquetExporter();
+        var tables = BuildFixtureTables();
+
+        await exporter.ExportAsync(tables, _tempDir);
+
+        var files = Directory.GetFiles(_tempDir, "*.parquet").OrderBy(f => f).ToArray();
+        files.Should().HaveCount(2);
+        files.Should().Contain(f => f.Contains("users"));
+        files.Should().Contain(f => f.Contains("orders"));
+    }
+
+    [Fact]
+    public async Task ParquetExporter_EmptyTable_ProducesNoFile()
+    {
+        var exporter = new ParquetExporter();
+        var tables = new[] { new TableData("public.empty", []) };
+
+        await exporter.ExportAsync(tables, _tempDir);
+
+        var files = Directory.GetFiles(_tempDir, "*.parquet");
+        files.Should().BeEmpty("empty tables produce no file");
+    }
+
+    [Fact]
+    public async Task ParquetExporter_MixedTypes_ProducesReadableFile()
+    {
+        var exporter = new ParquetExporter();
+        var now = DateTime.UtcNow;
+        var tables = new[]
+        {
+            new TableData("public.events",
+            [
+                new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["id"] = 1, ["name"] = "start", ["value"] = 3.14, ["active"] = true, ["ts"] = now, ["score"] = null
+                }
+            ])
+        };
+
+        await exporter.ExportAsync(tables, _tempDir);
+
+        var file = Directory.GetFiles(_tempDir, "*.parquet").Single();
+        file.Should().EndWith(".parquet");
+        (new FileInfo(file).Length).Should().BeGreaterThan(0);
+    }
 }

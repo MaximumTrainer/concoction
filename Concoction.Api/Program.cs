@@ -2,6 +2,7 @@ using Concoction.Api;
 using Concoction.Api.Authentication;
 using Concoction.Api.Routes;
 using Concoction.Infrastructure.DependencyInjection;
+using Concoction.Infrastructure.Persistence;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 
@@ -36,6 +37,14 @@ builder.Services.AddConcoctionInfrastructure(opts =>
 
 builder.Services.AddHostedService<StartupBootstrapService>();
 
+var dbProvider = Environment.GetEnvironmentVariable("CONCOCTION_DB_PROVIDER") ?? "memory";
+if (dbProvider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))
+{
+    var connStr = Environment.GetEnvironmentVariable("CONCOCTION_CONNECTION_STRING")
+        ?? "Data Source=concoction.db";
+    builder.Services.AddConcoctionPersistence(connStr);
+}
+
 var app = builder.Build();
 
 app.UseExceptionHandler();
@@ -60,5 +69,6 @@ app.MapRunRoutes().RequireAuthorization();
 app.MapWorkflowRoutes().RequireAuthorization();
 app.MapChatRoutes().RequireAuthorization();
 app.MapApiKeyRoutes().RequireAuthorization();
+app.MapWebhookRoutes().RequireAuthorization();
 
 app.Run();

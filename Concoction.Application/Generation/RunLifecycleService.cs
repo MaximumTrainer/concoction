@@ -4,7 +4,10 @@ using Concoction.Domain.Models;
 
 namespace Concoction.Application.Generation;
 
-public sealed class RunLifecycleService(IRunRepository runRepository, IArtifactStore artifactStore)
+public sealed class RunLifecycleService(
+    IRunRepository runRepository,
+    IArtifactStore artifactStore,
+    IWebhookDeliveryService? webhookDeliveryService = null)
 {
     public async Task<DatasetRun> StartRunAsync(long seed, IReadOnlyDictionary<string, int> requestedRowCounts, CancellationToken cancellationToken = default)
     {
@@ -29,7 +32,17 @@ public sealed class RunLifecycleService(IRunRepository runRepository, IArtifactS
             ArtifactChecksums = manifest.ArtifactChecksums,
             ArtifactPaths = manifest.ArtifactPaths
         };
-        return await runRepository.UpdateAsync(completed, cancellationToken).ConfigureAwait(false);
+        var saved = await runRepository.UpdateAsync(completed, cancellationToken).ConfigureAwait(false);
+
+        if (webhookDeliveryService is not null && completed.WorkspaceId.HasValue)
+        {
+            await webhookDeliveryService.DeliverAsync(
+                completed.WorkspaceId.Value, "run.completed",
+                new { runId = saved.Id, status = saved.Status.ToString(), completedAt = saved.CompletedAt },
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return saved;
     }
 
     public async Task<DatasetRun> FailRunAsync(Guid runId, string reason, CancellationToken cancellationToken = default)
@@ -41,7 +54,17 @@ public sealed class RunLifecycleService(IRunRepository runRepository, IArtifactS
             CompletedAt = DateTimeOffset.UtcNow,
             FailureReason = reason
         };
-        return await runRepository.UpdateAsync(failed, cancellationToken).ConfigureAwait(false);
+        var saved = await runRepository.UpdateAsync(failed, cancellationToken).ConfigureAwait(false);
+
+        if (webhookDeliveryService is not null && failed.WorkspaceId.HasValue)
+        {
+            await webhookDeliveryService.DeliverAsync(
+                failed.WorkspaceId.Value, "run.failed",
+                new { runId = saved.Id, status = saved.Status.ToString(), reason, failedAt = saved.CompletedAt },
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return saved;
     }
 
     public async Task<DatasetRun> CancelRunAsync(Guid runId, CancellationToken cancellationToken = default)
@@ -71,3 +94,4 @@ public sealed class RunLifecycleService(IRunRepository runRepository, IArtifactS
         return run ?? throw new InvalidOperationException($"Run '{runId}' not found.");
     }
 }
+

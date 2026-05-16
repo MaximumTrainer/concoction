@@ -39,7 +39,8 @@ public sealed record ChatSession(
     ChatMode Mode,
     bool IsArchived,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? ArchivedAt = null);
+    DateTimeOffset? ArchivedAt = null,
+    string? InstructionOverride = null);
 
 public sealed record ChatMessage(
     Guid Id,

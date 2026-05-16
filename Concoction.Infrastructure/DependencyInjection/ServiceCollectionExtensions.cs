@@ -12,12 +12,14 @@ using Concoction.Application.Orchestration;
 using Concoction.Application.Planning;
 using Concoction.Application.Projects;
 using Concoction.Application.Schema;
+using Concoction.Application.Webhooks;
 using Concoction.Application.Workflows;
 using Concoction.Application.Workspaces;
 using Concoction.Infrastructure.Configuration;
 using Concoction.Infrastructure.Export;
 using Concoction.Infrastructure.Repositories;
 using Concoction.Infrastructure.Schema;
+using Concoction.Infrastructure.Webhooks;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Concoction.Infrastructure.DependencyInjection;
@@ -46,7 +48,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISensitiveFieldPolicy, DefaultSensitiveFieldPolicy>();
         services.AddSingleton<IRuleConfigurationService, RuleConfigurationService>();
         services.AddSingleton<ISchemaDiscoveryService, SchemaDiscoveryService>();
-        services.AddSingleton<IRowMaterializer, ReferentialRowMaterializer>();
+        services.AddSingleton<ReferentialRowMaterializer>();
+        services.AddSingleton<IRowMaterializer>(sp => sp.GetRequiredService<ReferentialRowMaterializer>());
+        services.AddSingleton<IRowMaterializerStream>(sp => sp.GetRequiredService<ReferentialRowMaterializer>());
         services.AddSingleton<ISyntheticDataOrchestrator, SyntheticDataOrchestrator>();
         services.AddSingleton<ISchemaReviewService, SchemaReviewService>();
         services.AddSingleton<IGenerationPlanService, GenerationPlanService>();
@@ -95,6 +99,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISchemaSnapshotService, SchemaSnapshotService>();
         services.AddSingleton<IProfileSnapshotService, ProfileSnapshotService>();
 
+        // #43 — webhooks
+        services.AddSingleton<IWebhookService, WebhookService>();
+
         return services;
     }
 
@@ -116,6 +123,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExporter, CsvExporter>();
         services.AddSingleton<IExporter, JsonExporter>();
         services.AddSingleton<IExporter, SqlExporter>();
+        services.AddSingleton<IExporter, ParquetExporter>();
 
         services.AddSingleton<IArtifactStore>(sp =>
         {
@@ -129,9 +137,10 @@ public static class ServiceCollectionExtensions
             return options.Provider.ToLowerInvariant() switch
             {
                 "sqlite" => ActivatorUtilities.CreateInstance<SqliteDataProfiler>(sp),
+                "postgres" or "postgresql" => ActivatorUtilities.CreateInstance<PostgreSqlDataProfiler>(sp),
                 _ => throw new NotSupportedException(
                     $"No data profiler configured for provider '{options.Provider}'. " +
-                    "Only 'sqlite' is currently supported. Implement PostgreSqlDataProfiler and register it for 'postgres'.")
+                    "Supported providers: 'sqlite', 'postgres'.")
             };
         });
 
@@ -143,6 +152,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISessionRepository, InMemorySessionRepository>();
         services.AddSingleton<IApiKeyStore, InMemoryApiKeyStore>();
         services.AddSingleton<ISecretProvider, EnvSecretProvider>();
+        services.AddSingleton<IWebhookRepository, InMemoryWebhookRepository>();
+
+        // HTTP delivery for webhooks
+        services.AddHttpClient("webhook", c => c.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<IWebhookDeliveryService, HttpWebhookDeliveryService>();
 
         return services;
     }

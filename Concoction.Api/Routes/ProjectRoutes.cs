@@ -97,6 +97,29 @@ public static class ProjectRoutes
             return Results.Ok(db);
         }).WithName("AddProjectDatabase");
 
+        group.MapPost("/{projectId:guid}/instructions", async (
+            Guid workspaceId,
+            Guid projectId,
+            SaveInstructionRequest req,
+            IInstructionVersionService instructionService,
+            HttpContext ctx,
+            CancellationToken ct) =>
+        {
+            var userId = ctx.GetUserId();
+            var version = await instructionService.SaveProjectInstructionAsync(projectId, req.Content, userId, ct).ConfigureAwait(false);
+            return Results.Ok(version);
+        }).WithName("SaveProjectInstruction");
+
+        group.MapGet("/{projectId:guid}/instructions", async (
+            Guid workspaceId,
+            Guid projectId,
+            IInstructionVersionService instructionService,
+            CancellationToken ct) =>
+        {
+            var latest = await instructionService.GetLatestProjectInstructionAsync(projectId, ct).ConfigureAwait(false);
+            return latest is null ? Results.NotFound() : Results.Ok(latest);
+        }).WithName("GetProjectInstruction");
+
         return group;
     }
 }

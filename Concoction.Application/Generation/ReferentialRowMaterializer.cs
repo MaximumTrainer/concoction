@@ -4,7 +4,7 @@ using Concoction.Domain.Models;
 
 namespace Concoction.Application.Generation;
 
-public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatcher, IRandomService random) : IRowMaterializer
+public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatcher, IRandomService random) : IRowMaterializer, IRowMaterializerStream
 {
     public async Task<TableData> MaterializeAsync(
         TableSchema table,
@@ -136,6 +136,112 @@ public sealed class ReferentialRowMaterializer(IValueGeneratorDispatcher dispatc
         }
 
         return new TableData(table.QualifiedName, rows);
+    }
+
+    /// <summary>
+    /// Streaming implementation of <see cref="IRowMaterializerStream"/>.
+    /// Yields rows one at a time using IAsyncEnumerable — no full-table buffer.
+    /// </summary>
+    public async IAsyncEnumerable<IReadOnlyDictionary<string, object?>> StreamAsync(
+        TableSchema table,
+        int rowCount,
+        RuleConfiguration? rules,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> keyPool,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var uniqueValueSets = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        for (var rowIndex = 0; rowIndex < rowCount; rowIndex++)
+        {
+            const int maxAttempts = 10;
+            Dictionary<string, object?>? acceptedRow = null;
+
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+                var fkParentRowIndices = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (var fk in table.ForeignKeys)
+                {
+                    if (keyPool.TryGetValue(fk.ReferencedTable, out var parentRows) && parentRows.Count > 0)
+                    {
+                        fkParentRowIndices[fk.Name] = random.NextInt(
+                            $"fk:{table.QualifiedName}.{fk.Name}.{rowIndex}.{attempt}", 0, parentRows.Count);
+                    }
+                }
+
+                foreach (var column in table.Columns)
+                {
+                    object? value;
+                    var fk = table.ForeignKeys.FirstOrDefault(f =>
+                        f.SourceColumns.Contains(column.Name, StringComparer.OrdinalIgnoreCase));
+
+                    if (fk is not null
+                        && fkParentRowIndices.TryGetValue(fk.Name, out var parentRowIdx)
+                        && keyPool.TryGetValue(fk.ReferencedTable, out var parentRows))
+                    {
+                        var parentRow = parentRows[parentRowIdx];
+                        var sourceMatch = fk.SourceColumns
+                            .Select(static (c, i) => (c, i))
+                            .FirstOrDefault(x => string.Equals(x.c, column.Name, StringComparison.OrdinalIgnoreCase));
+                        var foundIdx = sourceMatch.c is not null ? sourceMatch.i : -1;
+                        var referencedCol = foundIdx >= 0 && foundIdx < fk.ReferencedColumns.Count
+                            ? fk.ReferencedColumns[foundIdx] : column.Name;
+                        value = parentRow.TryGetValue(referencedCol, out var refVal) ? refVal : null;
+                    }
+                    else
+                    {
+                        value = await GenerateColumnValueAsync(
+                            table, column, HashSeed(rowIndex, attempt), rules, row, keyPool, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    row[column.Name] = value;
+                }
+
+                var compositeKeyEntries = new List<(string ConstraintKey, string CompositeValue)>();
+                var hasDuplicate = false;
+
+                foreach (var constraint in table.UniqueConstraints)
+                {
+                    var orderedCols = constraint.Columns
+                        .OrderBy(static c => c, StringComparer.OrdinalIgnoreCase).ToArray();
+
+                    if (orderedCols.Any(c => !row.TryGetValue(c, out var v) || v is null))
+                        continue;
+
+                    var constraintKey = string.Join('|', orderedCols);
+                    var compositeValue = string.Join('|', orderedCols
+                        .Select(c => row.TryGetValue(c, out var v) ? v?.ToString() ?? string.Empty : string.Empty));
+
+                    if (!uniqueValueSets.TryGetValue(constraintKey, out var used))
+                    {
+                        used = new HashSet<string>(StringComparer.Ordinal);
+                        uniqueValueSets[constraintKey] = used;
+                    }
+
+                    if (used.Contains(compositeValue)) { hasDuplicate = true; break; }
+                    compositeKeyEntries.Add((constraintKey, compositeValue));
+                }
+
+                if (!hasDuplicate)
+                {
+                    foreach (var (constraintKey, compositeValue) in compositeKeyEntries)
+                        uniqueValueSets[constraintKey].Add(compositeValue);
+                    acceptedRow = row;
+                    break;
+                }
+            }
+
+            if (acceptedRow is null)
+            {
+                throw new InvalidOperationException(
+                    $"Unable to generate a row satisfying unique constraints for {table.QualifiedName} after {maxAttempts} attempts.");
+            }
+
+            yield return acceptedRow;
+        }
     }
 
     private async Task<object?> GenerateColumnValueAsync(

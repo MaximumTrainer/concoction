@@ -16,6 +16,14 @@ public sealed record TableRule
     [Required]
     public required string Table { get; init; }
 
+    /// <summary>
+    /// Overrides the global row count for this specific table.
+    /// When set, takes precedence over <c>--rows</c> / <c>RequestedRowCounts</c>.
+    /// Must be ≥ 1 when specified.
+    /// </summary>
+    [Range(1, int.MaxValue, ErrorMessage = "RowCount must be at least 1 when specified.")]
+    public int? RowCount { get; init; }
+
     public IReadOnlyList<ColumnRule> Columns { get; init; } = [];
 }
 
@@ -34,6 +42,27 @@ public sealed record ColumnRule
     public int? SeedOffset { get; init; }
 
     public Dictionary<string, double>? Distribution { get; init; }
+
+    /// <summary>
+    /// Minimum value (inclusive) for numeric or date/datetime columns.
+    /// For numeric columns: a parseable number. For date/datetime: ISO-8601 string.
+    /// Silently ignored for types that don't support range constraints.
+    /// </summary>
+    public string? MinValue { get; init; }
+
+    /// <summary>
+    /// Maximum value (inclusive) for numeric or date/datetime columns.
+    /// For numeric columns: a parseable number. For date/datetime: ISO-8601 string.
+    /// Silently ignored for types that don't support range constraints.
+    /// </summary>
+    public string? MaxValue { get; init; }
+
+    /// <summary>
+    /// Regex-like character class pattern for string columns, e.g. "[A-Z]{3}[0-9]{4}".
+    /// Supported classes: [A-Z], [a-z], [0-9], [A-Za-z0-9]. Literal chars allowed.
+    /// Silently ignored for non-string columns.
+    /// </summary>
+    public string? Pattern { get; init; }
 
     /// <summary>
     /// Path-level strategy overrides for JSON/JSONB columns.

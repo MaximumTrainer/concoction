@@ -77,10 +77,32 @@ public interface IRowMaterializer
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>Streaming variant of <see cref="IRowMaterializer"/> that yields rows one at a time via IAsyncEnumerable.</summary>
+public interface IRowMaterializerStream
+{
+    IAsyncEnumerable<IReadOnlyDictionary<string, object?>> StreamAsync(
+        TableSchema table,
+        int rowCount,
+        RuleConfiguration? rules,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> keyPool,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IExporter
 {
     string Name { get; }
     Task ExportAsync(IReadOnlyList<TableData> tables, string target, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Streaming exporter that writes rows incrementally as they are produced.
+/// Implementors must be stateful: call <see cref="BeginTableAsync"/> before any <see cref="WriteRowAsync"/> calls.
+/// </summary>
+public interface IStreamingExporter : IExporter
+{
+    Task BeginTableAsync(TableSchema table, string target, CancellationToken cancellationToken = default);
+    Task WriteRowAsync(IReadOnlyDictionary<string, object?> row, CancellationToken cancellationToken = default);
+    Task EndTableAsync(CancellationToken cancellationToken = default);
 }
 
 public interface ISensitiveFieldPolicy
@@ -99,6 +121,12 @@ public interface ISyntheticDataOrchestrator
 {
     Task<(GenerationResult Result, RunSummary Summary)> GenerateAsync(GenerationRequest request, CancellationToken cancellationToken = default);
     Task<DatabaseSchema> DiscoverAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Streaming generation path: rows are produced and forwarded to the exporter incrementally.
+    /// Only PK key values are buffered per table — full row data is never held in memory.
+    /// </summary>
+    Task<RunSummary> GenerateStreamingAsync(GenerationRequest request, IStreamingExporter exporter, string target, CancellationToken cancellationToken = default);
 }
 
 // ── #13: Schema profiling ports ───────────────────────────────────────────────
@@ -279,6 +307,11 @@ public interface IInstructionVersionService
     Task<InstructionVersion> SaveAsync(Guid workspaceId, string content, Guid createdByUserId, CancellationToken cancellationToken = default);
     Task<InstructionVersion?> GetLatestAsync(Guid workspaceId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<InstructionVersion>> GetHistoryAsync(Guid workspaceId, int pageSize = 20, CancellationToken cancellationToken = default);
+
+    /// <summary>Saves a project-level instruction version.</summary>
+    Task<InstructionVersion> SaveProjectInstructionAsync(Guid projectId, string content, Guid createdByUserId, CancellationToken cancellationToken = default);
+    /// <summary>Returns the latest instruction version for a project, or null if none.</summary>
+    Task<InstructionVersion?> GetLatestProjectInstructionAsync(Guid projectId, CancellationToken cancellationToken = default);
 }
 
 // ── #29: Project ports ────────────────────────────────────────────────────────
@@ -334,6 +367,7 @@ public interface IAgentChatService
     Task<ChatSession?> GetSessionAsync(Guid sessionId, Guid requestingUserId, CancellationToken cancellationToken = default);
     Task<ChatSession> ArchiveSessionAsync(Guid sessionId, Guid requestingUserId, CancellationToken cancellationToken = default);
     Task<ChatSession> ChangeMode(Guid sessionId, ChatMode mode, Guid requestingUserId, CancellationToken cancellationToken = default);
+    Task<ChatSession> SetInstructionOverrideAsync(Guid sessionId, string? instructionOverride, Guid requestingUserId, CancellationToken cancellationToken = default);
     Task<ChatMessage> SendMessageAsync(SendMessageCommand command, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ChatMessage>> GetHistoryAsync(Guid sessionId, Guid requestingUserId, int pageSize = 50, CancellationToken cancellationToken = default);
     Task<string> GetComposedInstructionsAsync(Guid sessionId, CancellationToken cancellationToken = default);
@@ -410,4 +444,31 @@ public interface IProfileSnapshotService
     Task<ProfileSnapshot> SaveProfileAsync(Guid workspaceId, ProfileSnapshot profile, CancellationToken cancellationToken = default);
     Task<ProfileSnapshot?> GetProfileAsync(Guid profileId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProfileSnapshot>> ListProfilesAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+}
+
+// ── #43: Webhook ports ────────────────────────────────────────────────────────
+
+public sealed record RegisterWebhookCommand(Guid WorkspaceId, string Url, IReadOnlyList<string> Events, string? SigningSecret = null);
+
+public interface IWebhookService
+{
+    Task<WebhookRegistration> RegisterAsync(RegisterWebhookCommand command, Guid requestingUserId, CancellationToken cancellationToken = default);
+    Task<WebhookRegistration?> GetAsync(Guid webhookId, Guid requestingUserId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<WebhookRegistration>> ListAsync(Guid workspaceId, Guid requestingUserId, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Guid webhookId, Guid requestingUserId, CancellationToken cancellationToken = default);
+}
+
+public interface IWebhookDeliveryService
+{
+    /// <summary>Delivers an event to all active webhooks subscribed to it for the given workspace.</summary>
+    Task DeliverAsync(Guid workspaceId, string eventName, object payload, CancellationToken cancellationToken = default);
+}
+
+public interface IWebhookRepository
+{
+    Task<WebhookRegistration> SaveAsync(WebhookRegistration webhook, CancellationToken cancellationToken = default);
+    Task<WebhookRegistration?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<WebhookRegistration>> ListByWorkspaceAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<WebhookDelivery> SaveDeliveryAsync(WebhookDelivery delivery, CancellationToken cancellationToken = default);
 }

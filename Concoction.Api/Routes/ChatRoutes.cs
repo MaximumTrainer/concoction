@@ -76,6 +76,19 @@ public static class ChatRoutes
             return Results.Ok(session);
         }).WithName("ChangeChatMode");
 
+        group.MapPatch("/sessions/{sessionId:guid}/instructions", async (
+            Guid workspaceId,
+            Guid sessionId,
+            SetInstructionOverrideRequest req,
+            IAgentChatService chatService,
+            HttpContext ctx,
+            CancellationToken ct) =>
+        {
+            var userId = ctx.GetUserId();
+            var session = await chatService.SetInstructionOverrideAsync(sessionId, req.InstructionOverride, userId, ct).ConfigureAwait(false);
+            return Results.Ok(session);
+        }).WithName("SetChatInstructionOverride");
+
         return group;
     }
 }
@@ -83,3 +96,4 @@ public static class ChatRoutes
 public sealed record CreateChatSessionRequest(string Name, Guid? ProjectId, ChatMode Mode = ChatMode.Guided);
 public sealed record SendMessageRequest(string Content);
 public sealed record ChangeModeRequest(ChatMode Mode);
+public sealed record SetInstructionOverrideRequest(string? InstructionOverride);

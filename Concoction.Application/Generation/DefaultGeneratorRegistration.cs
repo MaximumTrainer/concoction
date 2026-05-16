@@ -46,15 +46,73 @@ public static class DefaultGeneratorRegistration
     public static IGeneratorRegistry RegisterDefaults(this IGeneratorRegistry registry, IRandomService random)
     {
         registry.Register(DataKind.Boolean, (ctx, _) => new ValueTask<object?>(random.NextInt(Scope(ctx), 0, 2) == 1));
-        registry.Register(DataKind.Integer, (ctx, _) => new ValueTask<object?>(random.NextInt(Scope(ctx), 1, 100_000)));
-        registry.Register(DataKind.Long, (ctx, _) => new ValueTask<object?>(random.NextLong(Scope(ctx), 1, long.MaxValue)));
-        registry.Register(DataKind.Decimal, (ctx, _) => new ValueTask<object?>((decimal)(random.NextDouble(Scope(ctx)) * 10_000)));
-        registry.Register(DataKind.Double, (ctx, _) => new ValueTask<object?>(random.NextDouble(Scope(ctx)) * 10_000));
-        registry.Register(DataKind.String, (ctx, _) => new ValueTask<object?>($"{ctx.Column}_{random.NextToken(Scope(ctx), 10)}"));
+        registry.Register(DataKind.Integer, (ctx, _) =>
+        {
+            var rule = FindColumnRule(ctx);
+            var min = rule?.MinValue is not null && int.TryParse(rule.MinValue, out var mn) ? mn : 1;
+            var max = rule?.MaxValue is not null && int.TryParse(rule.MaxValue, out var mx) ? mx : 100_000;
+            if (min >= max) max = min + 1;
+            return new ValueTask<object?>(random.NextInt(Scope(ctx), min, max));
+        });
+        registry.Register(DataKind.Long, (ctx, _) =>
+        {
+            var rule = FindColumnRule(ctx);
+            var min = rule?.MinValue is not null && long.TryParse(rule.MinValue, out var mn) ? mn : 1L;
+            var max = rule?.MaxValue is not null && long.TryParse(rule.MaxValue, out var mx) ? mx : long.MaxValue;
+            if (min >= max) max = min + 1;
+            return new ValueTask<object?>(random.NextLong(Scope(ctx), min, max));
+        });
+        registry.Register(DataKind.Decimal, (ctx, _) =>
+        {
+            var rule = FindColumnRule(ctx);
+            var min = rule?.MinValue is not null && double.TryParse(rule.MinValue, out var mn) ? mn : 0.0;
+            var max = rule?.MaxValue is not null && double.TryParse(rule.MaxValue, out var mx) ? mx : 10_000.0;
+            if (min >= max) max = min + 1;
+            return new ValueTask<object?>((decimal)(min + random.NextDouble(Scope(ctx)) * (max - min)));
+        });
+        registry.Register(DataKind.Double, (ctx, _) =>
+        {
+            var rule = FindColumnRule(ctx);
+            var min = rule?.MinValue is not null && double.TryParse(rule.MinValue, out var mn) ? mn : 0.0;
+            var max = rule?.MaxValue is not null && double.TryParse(rule.MaxValue, out var mx) ? mx : 10_000.0;
+            if (min >= max) max = min + 1;
+            return new ValueTask<object?>(min + random.NextDouble(Scope(ctx)) * (max - min));
+        });
+        registry.Register(DataKind.String, (ctx, _) =>
+        {
+            var rule = FindColumnRule(ctx);
+            if (!string.IsNullOrWhiteSpace(rule?.Pattern))
+                return new ValueTask<object?>(GenerateFromPattern(rule.Pattern, random, Scope(ctx)));
+            return new ValueTask<object?>($"{ctx.Column}_{random.NextToken(Scope(ctx), 10)}");
+        });
         registry.Register(DataKind.Guid, (ctx, _) => new ValueTask<object?>(random.NextGuid(Scope(ctx))));
-        registry.Register(DataKind.Date, (ctx, _) => new ValueTask<object?>(DateOnly.FromDateTime(DateTime.UtcNow.Date).AddDays(random.NextInt(Scope(ctx), -3650, 3650))));
-        registry.Register(DataKind.DateTime, (ctx, _) => new ValueTask<object?>(DateTimeOffset.UtcNow.AddMinutes(random.NextInt(Scope(ctx), -1_000_000, 1_000_000))));
-        registry.Register(DataKind.TimestampTz, (ctx, _) => new ValueTask<object?>(DateTimeOffset.UtcNow.AddMinutes(random.NextInt(Scope(ctx), -1_000_000, 1_000_000))));
+        registry.Register(DataKind.Date, (ctx, _) =>
+        {
+            var rule = FindColumnRule(ctx);
+            var minDate = rule?.MinValue is not null && DateOnly.TryParse(rule.MinValue, out var mn) ? mn : DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-3650));
+            var maxDate = rule?.MaxValue is not null && DateOnly.TryParse(rule.MaxValue, out var mx) ? mx : DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3650));
+            var totalDays = (maxDate.DayNumber - minDate.DayNumber);
+            if (totalDays <= 0) totalDays = 1;
+            return new ValueTask<object?>(minDate.AddDays(random.NextInt(Scope(ctx), 0, totalDays + 1)));
+        });
+        registry.Register(DataKind.DateTime, (ctx, _) =>
+        {
+            var rule = FindColumnRule(ctx);
+            var minDt = rule?.MinValue is not null && DateTimeOffset.TryParse(rule.MinValue, out var mn) ? mn : DateTimeOffset.UtcNow.AddMinutes(-1_000_000);
+            var maxDt = rule?.MaxValue is not null && DateTimeOffset.TryParse(rule.MaxValue, out var mx) ? mx : DateTimeOffset.UtcNow.AddMinutes(1_000_000);
+            var totalMinutes = (long)(maxDt - minDt).TotalMinutes;
+            if (totalMinutes <= 0) totalMinutes = 1;
+            return new ValueTask<object?>(minDt.AddMinutes(random.NextLong(Scope(ctx), 0, totalMinutes + 1)));
+        });
+        registry.Register(DataKind.TimestampTz, (ctx, _) =>
+        {
+            var rule = FindColumnRule(ctx);
+            var minDt = rule?.MinValue is not null && DateTimeOffset.TryParse(rule.MinValue, out var mn) ? mn : DateTimeOffset.UtcNow.AddMinutes(-1_000_000);
+            var maxDt = rule?.MaxValue is not null && DateTimeOffset.TryParse(rule.MaxValue, out var mx) ? mx : DateTimeOffset.UtcNow.AddMinutes(1_000_000);
+            var totalMinutes = (long)(maxDt - minDt).TotalMinutes;
+            if (totalMinutes <= 0) totalMinutes = 1;
+            return new ValueTask<object?>(minDt.AddMinutes(random.NextLong(Scope(ctx), 0, totalMinutes + 1)));
+        });
         registry.Register(DataKind.Json, (ctx, _) => new ValueTask<object?>($"{{\"id\":\"{random.NextToken(Scope(ctx), 8)}\"}}"));
         registry.Register(DataKind.Binary, (ctx, _) =>
         {
@@ -126,4 +184,89 @@ public static class DefaultGeneratorRegistration
 
     private static string Scope(GeneratorContext context)
         => $"{context.Table}.{context.Column}.{context.RowIndex}";
+
+    private static Concoction.Domain.Models.ColumnRule? FindColumnRule(GeneratorContext ctx)
+    {
+        if (ctx.Rules is null) return null;
+        foreach (var tableRule in ctx.Rules.Tables)
+        {
+            if (!string.Equals(tableRule.Table, ctx.Table, StringComparison.OrdinalIgnoreCase)) continue;
+            foreach (var colRule in tableRule.Columns)
+            {
+                if (string.Equals(colRule.Column, ctx.Column, StringComparison.OrdinalIgnoreCase))
+                    return colRule;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Generates a string matching a simple character-class pattern like "[A-Z]{3}[0-9]{4}".
+    /// Supported classes: [A-Z], [a-z], [0-9], [A-Za-z], [A-Za-z0-9].
+    /// Literal characters outside brackets are emitted as-is.
+    /// </summary>
+    private static string GenerateFromPattern(string pattern, IRandomService random, string scope)
+    {
+        var result = new System.Text.StringBuilder();
+        var i = 0;
+        var charCount = 0;
+
+        while (i < pattern.Length)
+        {
+            if (pattern[i] == '[')
+            {
+                var end = pattern.IndexOf(']', i + 1);
+                if (end < 0) { result.Append(pattern[i++]); continue; }
+
+                var charClass = pattern[(i + 1)..end];
+                i = end + 1;
+
+                // Parse optional quantifier {n}
+                int repeat = 1;
+                if (i < pattern.Length && pattern[i] == '{')
+                {
+                    var qEnd = pattern.IndexOf('}', i + 1);
+                    if (qEnd > i + 1 && int.TryParse(pattern[(i + 1)..qEnd], out var n))
+                    {
+                        repeat = n;
+                        i = qEnd + 1;
+                    }
+                }
+
+                var chars = ExpandCharClass(charClass);
+                for (var r = 0; r < repeat; r++)
+                {
+                    var ch = chars[random.NextInt($"{scope}.pat.{charCount++}", 0, chars.Length)];
+                    result.Append(ch);
+                }
+            }
+            else
+            {
+                result.Append(pattern[i++]);
+            }
+        }
+
+        return result.ToString();
+    }
+
+    private static char[] ExpandCharClass(string charClass)
+    {
+        var chars = new List<char>();
+        var i = 0;
+        while (i < charClass.Length)
+        {
+            if (i + 2 < charClass.Length && charClass[i + 1] == '-')
+            {
+                var from = charClass[i];
+                var to = charClass[i + 2];
+                for (var c = from; c <= to; c++) chars.Add(c);
+                i += 3;
+            }
+            else
+            {
+                chars.Add(charClass[i++]);
+            }
+        }
+        return chars.Count > 0 ? chars.ToArray() : ['X'];
+    }
 }

@@ -133,6 +133,70 @@ public sealed class SyntheticDataOrchestratorTests
             ((string?)row["phone_number"]).Should().StartWith("TKN-"));
     }
 
+    [Fact]
+    public async Task GenerateAsync_ShouldUsePerTableRowCount_WhenSpecifiedInRules()
+    {
+        var schema = new DatabaseSchema("fixture",
+        [
+            new TableSchema("main", "customers",
+            [
+                new ColumnSchema("id", "int", DataKind.Integer, false, true, true, null, null, null, null)
+            ],
+            ["id"], [], [], []),
+            new TableSchema("main", "orders",
+            [
+                new ColumnSchema("id", "int", DataKind.Integer, false, true, true, null, null, null, null),
+                new ColumnSchema("customer_id", "int", DataKind.Integer, false, false, false, null, null, null, null)
+            ],
+            ["id"],
+            [new ForeignKeySchema("fk_orders_cust", "main.orders", ["customer_id"], "main.customers", ["id"])],
+            [], [])
+        ]);
+
+        var orchestrator = BuildOrchestrator(schema);
+        var rules = new RuleConfiguration
+        {
+            Version = "1",
+            Tables =
+            [
+                new TableRule { Table = "main.customers", RowCount = 5, Columns = [] },
+                new TableRule { Table = "main.orders", RowCount = 25, Columns = [] }
+            ]
+        };
+
+        // RequestedRowCounts has lower priority than TableRule.RowCount
+        var request = new GenerationRequest(schema,
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["main.customers"] = 100 },
+            42,
+            rules);
+
+        var (result, _) = await orchestrator.GenerateAsync(request);
+
+        result.Tables.Single(t => t.Table == "main.customers").Rows.Should().HaveCount(5);
+        result.Tables.Single(t => t.Table == "main.orders").Rows.Should().HaveCount(25);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ShouldFallbackToRequestedRowCounts_WhenNoTableRuleRowCount()
+    {
+        var schema = new DatabaseSchema("fixture",
+        [
+            new TableSchema("main", "items",
+            [
+                new ColumnSchema("id", "int", DataKind.Integer, false, true, true, null, null, null, null)
+            ],
+            ["id"], [], [], [])
+        ]);
+
+        var orchestrator = BuildOrchestrator(schema);
+        var request = new GenerationRequest(schema,
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["main.items"] = 7 }, 1);
+
+        var (result, _) = await orchestrator.GenerateAsync(request);
+
+        result.Tables.Single(t => t.Table == "main.items").Rows.Should().HaveCount(7);
+    }
+
     private static SyntheticDataOrchestrator BuildOrchestrator(DatabaseSchema schema)
     {
         var provider = new StubSchemaProvider(schema);

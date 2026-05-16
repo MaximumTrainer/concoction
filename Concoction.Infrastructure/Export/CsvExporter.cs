@@ -4,9 +4,13 @@ using Concoction.Domain.Models;
 
 namespace Concoction.Infrastructure.Export;
 
-public sealed class CsvExporter : IExporter
+public sealed class CsvExporter : IExporter, IStreamingExporter
 {
     public string Name => "csv";
+
+    // Streaming state — one active file per table
+    private StreamWriter? _writer;
+    private string[]? _headers;
 
     public async Task ExportAsync(IReadOnlyList<TableData> tables, string target, CancellationToken cancellationToken = default)
     {
@@ -34,6 +38,33 @@ public sealed class CsvExporter : IExporter
 
             await File.WriteAllLinesAsync(filePath, lines, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    public async Task BeginTableAsync(TableSchema table, string target, CancellationToken cancellationToken = default)
+    {
+        Directory.CreateDirectory(target);
+        var filePath = Path.Combine(target, table.QualifiedName.Replace(".", "_", StringComparison.Ordinal) + ".csv");
+        _writer = new StreamWriter(filePath, append: false, Encoding.UTF8);
+        _headers = table.Columns.Select(c => c.Name).OrderBy(static h => h, StringComparer.Ordinal).ToArray();
+        await _writer.WriteLineAsync(string.Join(',', _headers.Select(Escape)));
+    }
+
+    public async Task WriteRowAsync(IReadOnlyDictionary<string, object?> row, CancellationToken cancellationToken = default)
+    {
+        if (_writer is null || _headers is null) throw new InvalidOperationException("BeginTableAsync must be called first.");
+        var values = _headers.Select(h => Escape(row.TryGetValue(h, out var value) ? value : null));
+        await _writer.WriteLineAsync(string.Join(',', values));
+    }
+
+    public async Task EndTableAsync(CancellationToken cancellationToken = default)
+    {
+        if (_writer is not null)
+        {
+            await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await _writer.DisposeAsync().ConfigureAwait(false);
+            _writer = null;
+        }
+        _headers = null;
     }
 
     private static string Escape(object? value)

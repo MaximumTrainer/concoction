@@ -84,6 +84,27 @@ public static class WorkspaceRoutes
             return Results.Ok(connection);
         }).WithName("AddConnection");
 
+        group.MapPost("/{workspaceId:guid}/instructions", async (
+            Guid workspaceId,
+            SaveInstructionRequest req,
+            IInstructionVersionService instructionService,
+            HttpContext ctx,
+            CancellationToken ct) =>
+        {
+            var userId = ctx.GetUserId();
+            var version = await instructionService.SaveAsync(workspaceId, req.Content, userId, ct).ConfigureAwait(false);
+            return Results.Ok(version);
+        }).WithName("SaveWorkspaceInstruction");
+
+        group.MapGet("/{workspaceId:guid}/instructions", async (
+            Guid workspaceId,
+            IInstructionVersionService instructionService,
+            CancellationToken ct) =>
+        {
+            var latest = await instructionService.GetLatestAsync(workspaceId, ct).ConfigureAwait(false);
+            return latest is null ? Results.NotFound() : Results.Ok(latest);
+        }).WithName("GetWorkspaceInstruction");
+
         return group;
     }
 }
@@ -91,3 +112,4 @@ public static class WorkspaceRoutes
 public sealed record CreateWorkspaceRequest(Guid AccountId, string Name);
 public sealed record GrantWorkspaceAccessRequest(Guid PrincipalId, bool IsGroup, WorkspaceRole Role);
 public sealed record AddConnectionRequest(string Name, string Provider);
+public sealed record SaveInstructionRequest(string Content);

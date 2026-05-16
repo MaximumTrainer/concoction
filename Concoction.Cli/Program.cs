@@ -37,9 +37,22 @@ var generate = new Command("generate", "Discover + generate + export")
     providerOption, connectionOption, dbNameOption, seedOption, rulesOption, outputOption, rowsOption, complianceOption
 };
 
-generate.SetHandler(async (provider, connection, database, seed, rules, output, rows, compliance) =>
+var streamingOption = new Option<bool>("--streaming", getDefaultValue: () => false, description: "Use streaming generation path (low memory, suitable for large datasets)");
+generate.AddOption(streamingOption);
+
+generate.SetHandler(async ctx =>
 {
-    using var host = BuildHost(provider, connection, database, seed);
+    var provider = ctx.ParseResult.GetValueForOption(providerOption)!;
+    var connection = ctx.ParseResult.GetValueForOption(connectionOption);
+    var database = ctx.ParseResult.GetValueForOption(dbNameOption);
+    var seed = ctx.ParseResult.GetValueForOption(seedOption);
+    var rules = ctx.ParseResult.GetValueForOption(rulesOption);
+    var output = ctx.ParseResult.GetValueForOption(outputOption)!;
+    var rows = ctx.ParseResult.GetValueForOption(rowsOption);
+    var compliance = ctx.ParseResult.GetValueForOption(complianceOption);
+    var streaming = ctx.ParseResult.GetValueForOption(streamingOption);
+
+    using var host = BuildHost(provider, connection ?? string.Empty, database ?? string.Empty, seed);
     var services = host.Services;
     var orchestrator = services.GetRequiredService<ISyntheticDataOrchestrator>();
     var ruleService = services.GetRequiredService<IRuleConfigurationService>();
@@ -70,25 +83,49 @@ generate.SetHandler(async (provider, connection, database, seed, rules, output, 
     }
 
     var request = new GenerationRequest(schema, rowCounts, seed, loadedRules, compliance);
-    var (result, summary) = await orchestrator.GenerateAsync(request);
 
-    foreach (var exporter in exporters)
+    if (streaming)
     {
-        await exporter.ExportAsync(result.Tables, Path.Combine(output, exporter.Name));
+        // Streaming path: write rows to disk incrementally, only PK keys buffered in memory.
+        var streamingExporters = exporters.OfType<IStreamingExporter>().ToArray();
+        if (streamingExporters.Length == 0)
+        {
+            Console.Error.WriteLine("No streaming-capable exporters registered. Use a format that supports streaming (csv or json).");
+            Environment.ExitCode = 1;
+            return;
+        }
+
+        foreach (var exporter in streamingExporters)
+        {
+            var summary = await orchestrator.GenerateStreamingAsync(request, exporter, Path.Combine(output, exporter.Name));
+            var summaryPath = Path.Combine(output, $"summary-{exporter.Name}.json");
+            Directory.CreateDirectory(output);
+            await File.WriteAllTextAsync(summaryPath, JsonSerializer.Serialize(summary, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+            Console.WriteLine($"[{exporter.Name}] Generated {summary.RowCount} rows across {summary.TableCount} tables (streaming).");
+        }
     }
-
-    var summaryPath = Path.Combine(output, "summary.json");
-    Directory.CreateDirectory(output);
-    await File.WriteAllTextAsync(summaryPath, JsonSerializer.Serialize(summary, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
-
-    Console.WriteLine($"Generated {summary.RowCount} rows across {summary.TableCount} tables.");
-
-    if (!result.IsSuccess)
+    else
     {
-        Console.Error.WriteLine($"Validation issues: {result.ValidationIssues.Count}");
-        Environment.ExitCode = 2;
+        var (result, summary) = await orchestrator.GenerateAsync(request);
+
+        foreach (var exporter in exporters)
+        {
+            await exporter.ExportAsync(result.Tables, Path.Combine(output, exporter.Name));
+        }
+
+        var summaryPath = Path.Combine(output, "summary.json");
+        Directory.CreateDirectory(output);
+        await File.WriteAllTextAsync(summaryPath, JsonSerializer.Serialize(summary, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+
+        Console.WriteLine($"Generated {summary.RowCount} rows across {summary.TableCount} tables.");
+
+        if (!result.IsSuccess)
+        {
+            Console.Error.WriteLine($"Validation issues: {result.ValidationIssues.Count}");
+            Environment.ExitCode = 2;
+        }
     }
-}, providerOption, connectionOption, dbNameOption, seedOption, rulesOption, outputOption, rowsOption, complianceOption);
+});
 
 var validate = new Command("validate", "Generate and return validation summary")
 {
@@ -121,7 +158,7 @@ var export = new Command("export", "Generate and export using chosen format")
     providerOption, connectionOption, dbNameOption, seedOption, outputOption, rowsOption
 };
 
-var formatOption = new Option<string>("--format", getDefaultValue: () => "json", description: "Export format: json or csv");
+var formatOption = new Option<string>("--format", getDefaultValue: () => "json", description: "Export format: json, csv, sql, or parquet");
 export.AddOption(formatOption);
 
 export.SetHandler(async (provider, connection, database, seed, output, rows, format) =>

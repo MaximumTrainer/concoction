@@ -100,30 +100,39 @@ public sealed class AgentChatService(
         return await sessionRepository.GetMessagesAsync(sessionId, 0, pageSize, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<ChatSession> SetInstructionOverrideAsync(Guid sessionId, string? instructionOverride, Guid requestingUserId, CancellationToken cancellationToken = default)
+    {
+        var session = await GetSessionOrThrowAsync(sessionId, requestingUserId, cancellationToken).ConfigureAwait(false);
+        var updated = session with { InstructionOverride = instructionOverride };
+        return await sessionRepository.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<string> GetComposedInstructionsAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         var session = await sessionRepository.GetByIdAsync(sessionId, cancellationToken).ConfigureAwait(false);
         if (session is null) return string.Empty;
 
-        // Compose instructions layered: workspace → session scope.
-        // The workspace instruction provides the base context; session info adds scoping metadata.
-        var workspaceInstruction = await instructionVersionService.GetLatestAsync(session.WorkspaceId, cancellationToken).ConfigureAwait(false);
-
         var parts = new List<string>();
 
+        // Layer 1: workspace-level instructions (base context)
+        var workspaceInstruction = await instructionVersionService.GetLatestAsync(session.WorkspaceId, cancellationToken).ConfigureAwait(false);
         if (workspaceInstruction is not null)
-        {
             parts.Add(workspaceInstruction.Content);
-        }
 
-        parts.Add($"[workspace={session.WorkspaceId}]");
+        // Layer 2: project-level instructions
         if (session.ProjectId.HasValue)
         {
-            parts.Add($"[project={session.ProjectId.Value}]");
+            var projectInstruction = await instructionVersionService
+                .GetLatestProjectInstructionAsync(session.ProjectId.Value, cancellationToken).ConfigureAwait(false);
+            if (projectInstruction is not null)
+                parts.Add(projectInstruction.Content);
         }
-        parts.Add($"[session={sessionId}][mode={session.Mode}]");
 
-        return string.Join("\n", parts);
+        // Layer 3: session-level override (highest precedence)
+        if (!string.IsNullOrWhiteSpace(session.InstructionOverride))
+            parts.Add(session.InstructionOverride);
+
+        return string.Join("\n\n", parts);
     }
 
     private async Task<ChatSession> GetSessionOrThrowAsync(Guid sessionId, Guid requestingUserId, CancellationToken cancellationToken)

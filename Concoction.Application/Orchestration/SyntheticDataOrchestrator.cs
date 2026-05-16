@@ -16,6 +16,86 @@ public sealed class SyntheticDataOrchestrator(
     public Task<DatabaseSchema> DiscoverAsync(CancellationToken cancellationToken = default)
         => schemaDiscoveryService.DiscoverAsync(cancellationToken);
 
+    public async Task<RunSummary> GenerateStreamingAsync(
+        GenerationRequest request,
+        IStreamingExporter exporter,
+        string target,
+        CancellationToken cancellationToken = default)
+    {
+        var streamer = materializer as IRowMaterializerStream
+            ?? throw new InvalidOperationException(
+                "The configured IRowMaterializer does not implement IRowMaterializerStream. " +
+                "Register a materializer that implements both interfaces to use the streaming path.");
+
+        var startedAt = DateTimeOffset.UtcNow;
+        var plan = planner.BuildPlan(request.Schema);
+        var keyPool = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>(StringComparer.Ordinal);
+        var tableCount = 0;
+        var totalRows = 0;
+
+        foreach (var tableName in plan.OrderedTables)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var table = request.Schema.Tables.First(t => string.Equals(t.QualifiedName, tableName, StringComparison.Ordinal));
+
+            var tableCompliance = table.Columns
+                .Select(col => sensitiveFieldPolicy.Evaluate(table.QualifiedName, col, request.ComplianceProfile))
+                .Where(d => d.Strategy is not SensitiveFieldStrategy.None and not SensitiveFieldStrategy.Synthesize)
+                .ToDictionary(d => d.Column, d => d, StringComparer.OrdinalIgnoreCase);
+
+            var rowCount = request.Rules?.Tables
+                .FirstOrDefault(t => string.Equals(t.Table, table.QualifiedName, StringComparison.OrdinalIgnoreCase))
+                ?.RowCount
+                ?? (request.RequestedRowCounts.TryGetValue(table.QualifiedName, out var requested) ? requested : 10);
+
+            await exporter.BeginTableAsync(table, target, cancellationToken).ConfigureAwait(false);
+
+            var pkBuffer = new List<IReadOnlyDictionary<string, object?>>();
+
+            await foreach (var row in streamer.StreamAsync(table, rowCount, request.Rules, keyPool, cancellationToken).ConfigureAwait(false))
+            {
+                IReadOnlyDictionary<string, object?> finalRow = row;
+                if (tableCompliance.Count > 0)
+                {
+                    var mutable = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
+                    foreach (var (col, decision) in tableCompliance)
+                    {
+                        if (!mutable.TryGetValue(col, out var original) || original is null) continue;
+                        mutable[col] = decision.Strategy switch
+                        {
+                            SensitiveFieldStrategy.Redact => "REDACTED",
+                            SensitiveFieldStrategy.Pseudonymize => "usr_" + Convert.ToHexString(
+                                System.Security.Cryptography.SHA256.HashData(
+                                    System.Text.Encoding.UTF8.GetBytes("pseudo:" + original)))[..7].ToLowerInvariant(),
+                            SensitiveFieldStrategy.Tokenize => "TKN-" + Convert.ToHexString(
+                                System.Security.Cryptography.SHA256.HashData(
+                                    System.Text.Encoding.UTF8.GetBytes("token:" + original)))[..12].ToUpperInvariant(),
+                            _ => original
+                        };
+                    }
+                    finalRow = mutable;
+                }
+
+                await exporter.WriteRowAsync(finalRow, cancellationToken).ConfigureAwait(false);
+                totalRows++;
+
+                if (table.PrimaryKey.Count > 0)
+                {
+                    pkBuffer.Add(table.PrimaryKey
+                        .ToDictionary(col => col, col => row.TryGetValue(col, out var v) ? v : null, StringComparer.OrdinalIgnoreCase));
+                }
+            }
+
+            await exporter.EndTableAsync(cancellationToken).ConfigureAwait(false);
+            tableCount++;
+
+            if (table.PrimaryKey.Count > 0)
+                keyPool[table.QualifiedName] = pkBuffer;
+        }
+
+        return new RunSummary(startedAt, DateTimeOffset.UtcNow, tableCount, totalRows, 0, plan.Diagnostics);
+    }
+
     public async Task<(GenerationResult Result, RunSummary Summary)> GenerateAsync(GenerationRequest request, CancellationToken cancellationToken = default)
     {
         var startedAt = DateTimeOffset.UtcNow;
@@ -36,9 +116,10 @@ public sealed class SyntheticDataOrchestrator(
                 compliance.Add(sensitiveFieldPolicy.Evaluate(table.QualifiedName, column, request.ComplianceProfile));
             }
 
-            var rowCount = request.RequestedRowCounts.TryGetValue(table.QualifiedName, out var requested)
-                ? requested
-                : 10;
+            var rowCount = request.Rules?.Tables
+                .FirstOrDefault(t => string.Equals(t.Table, table.QualifiedName, StringComparison.OrdinalIgnoreCase))
+                ?.RowCount
+                ?? (request.RequestedRowCounts.TryGetValue(table.QualifiedName, out var requested) ? requested : 10);
 
             var materialized = await materializer.MaterializeAsync(table, rowCount, request.Rules, keyPool, cancellationToken).ConfigureAwait(false);
 
