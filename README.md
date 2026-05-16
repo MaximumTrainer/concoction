@@ -4,6 +4,16 @@
 
 Concoction is a .NET 10 synthetic data platform that discovers your database schema, generates realistic relational data with full referential integrity, and exports it in CSV, JSON, and SQL formats. It ships as a CLI, a REST API, and a TypeScript SDK, and supports a deterministic seeding model so the same seed always produces the same dataset.
 
+### How it works
+
+You can drive the same pipeline through three entry points: the CLI (`discover`, `discover-profile`, `generate`, `validate`, and `export`) for local workflows, the REST API for managed runs, and the TypeScript SDK as a typed client over that API. Regardless of entry point, Concoction follows the same discovery → plan/generate → export flow.
+
+**Schema discovery.** Concoction connects to a live SQLite or PostgreSQL database and performs a read-only introspection using provider-specific adapters — `sqlite_master` and `pragma_*` views for SQLite; `information_schema` queries for PostgreSQL. For every table it captures column names, SQL types, inferred data kinds (e.g. `Email`, `Integer`, `Guid`), nullability, primary keys, foreign keys, and unique constraints, plus SQLite index metadata. The `discover` command prints this as JSON; `discover-profile` augments it with diagnostics such as self-referencing tables, cycle edges, and unmapped column types.
+
+**Relational data generation.** Before producing any rows, Concoction analyses the foreign-key graph and builds a *generation plan*: tables are topologically sorted so parent tables are always populated before their dependents. That plan becomes the working data graph for generation — parent primary keys are collected first, then child tables draw FK values from those already-materialized parent rows so relationships stay consistent. Cycles in the FK graph are detected and broken at an optional FK column, with the cyclic reference backfilled after both sides exist. Self-referencing tables (e.g. `employees.manager_id → employees.id`) are handled with a chain strategy — row 0 gets a null root and each subsequent row references the previous one. All values are produced deterministically from a single integer seed, so the same seed and schema always produce the same dataset. Generation strategies are controlled by inferred data kinds, an optional YAML/JSON Rules DSL (per-column strategy, fixed value, null rate, weighted distribution, JSON-path rules), and a compliance profile (`Default`, `Healthcare`, or `Finance`) that applies masking for sensitive field categories. After generation, Concoction records structured validation issues for rule/constraint checks such as non-nullability, string length, allowed values, uniqueness, and any FK backfill cases it could not safely resolve.
+
+**Export.** The `generate` command writes all three formats to a single output directory, organizing the results by exporter (`csv/`, `json/`, and `sql/`) plus a root `summary.json` artifact. CSV output is RFC-4180 compliant with one file per table and nulls as empty fields; JSON output is one array of row objects per table; SQL output is standard `INSERT` statements with proper quoting, `NULL` literals, and `TRUE`/`FALSE` booleans. The `export` command runs the same generation pipeline but targets a single format when only one artifact set is needed.
+
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
