@@ -54,16 +54,16 @@ public sealed class NoSqlProviderTests
         index.IsUnique.Should().BeTrue();
     }
 
-    // ── Stub adapter tests ────────────────────────────────────────────────────
+    // ── Adapter tests ─────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("cosmosdb")]
     [InlineData("mongodb")]
     [InlineData("dynamodb")]
     [InlineData("firestore")]
-    public async Task Stub_DiscoverCollectionsAsync_ThrowsNotSupportedException(string providerName)
+    public void Adapter_ProviderName_MatchesExpected(string providerName)
     {
-        INoSqlSchemaDiscoverer stub = providerName switch
+        INoSqlSchemaDiscoverer adapter = providerName switch
         {
             "cosmosdb" => new CosmosDbSchemaDiscoverer(),
             "mongodb" => new MongoDbSchemaDiscoverer(),
@@ -72,29 +72,61 @@ public sealed class NoSqlProviderTests
             _ => throw new ArgumentException($"Unknown provider: {providerName}")
         };
 
-        var act = async () => await stub.DiscoverCollectionsAsync("conn", "db");
-
-        await act.Should().ThrowAsync<NotSupportedException>()
-            .WithMessage($"*{stub.ProviderName}*");
+        adapter.ProviderName.Should().Be(providerName);
     }
 
-    [Theory]
-    [InlineData("cosmosdb")]
-    [InlineData("mongodb")]
-    [InlineData("dynamodb")]
-    [InlineData("firestore")]
-    public void Stub_ProviderName_MatchesExpected(string providerName)
+    [Fact]
+    public async Task CosmosDbAdapter_ThrowsInvalidOperationException_WhenNoConnectionString()
     {
-        INoSqlSchemaDiscoverer stub = providerName switch
+        var adapter = new CosmosDbSchemaDiscoverer();
+        var savedEnv = Environment.GetEnvironmentVariable("COSMOSDB_CONNECTION_STRING");
+        Environment.SetEnvironmentVariable("COSMOSDB_CONNECTION_STRING", null);
+        try
         {
-            "cosmosdb" => new CosmosDbSchemaDiscoverer(),
-            "mongodb" => new MongoDbSchemaDiscoverer(),
-            "dynamodb" => new DynamoDbSchemaDiscoverer(),
-            "firestore" => new FirestoreSchemaDiscoverer(),
-            _ => throw new ArgumentException($"Unknown provider: {providerName}")
-        };
+            var act = async () => await adapter.DiscoverCollectionsAsync(string.Empty, "mydb");
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*COSMOSDB_CONNECTION_STRING*");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("COSMOSDB_CONNECTION_STRING", savedEnv);
+        }
+    }
 
-        stub.ProviderName.Should().Be(providerName);
+    [Fact]
+    public async Task MongoDbAdapter_ThrowsInvalidOperationException_WhenNoConnectionString()
+    {
+        var adapter = new MongoDbSchemaDiscoverer();
+        var savedEnv = Environment.GetEnvironmentVariable("MONGODB_CONNECTION_STRING");
+        Environment.SetEnvironmentVariable("MONGODB_CONNECTION_STRING", null);
+        try
+        {
+            var act = async () => await adapter.DiscoverCollectionsAsync(string.Empty, "mydb");
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*MONGODB_CONNECTION_STRING*");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MONGODB_CONNECTION_STRING", savedEnv);
+        }
+    }
+
+    [Fact]
+    public async Task FirestoreAdapter_ThrowsInvalidOperationException_WhenNoConnectionString()
+    {
+        var adapter = new FirestoreSchemaDiscoverer();
+        var savedEnv = Environment.GetEnvironmentVariable("GOOGLE_CLOUD_PROJECT");
+        Environment.SetEnvironmentVariable("GOOGLE_CLOUD_PROJECT", null);
+        try
+        {
+            var act = async () => await adapter.DiscoverCollectionsAsync(string.Empty, string.Empty);
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*GOOGLE_CLOUD_PROJECT*");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GOOGLE_CLOUD_PROJECT", savedEnv);
+        }
     }
 
     // ── Factory tests ─────────────────────────────────────────────────────────

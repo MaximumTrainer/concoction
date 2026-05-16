@@ -5,4 +5,11 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- SharpCompress GHSA-6c8g-7p36-r338: path traversal in WriteToDirectory().
+         Unpatched in all versions including latest (0.47.4). We use SharpCompress only
+         transitively via Parquet.Net's internal compression and never call WriteToDirectory()
+         on untrusted archives, so this is not exploitable in this project. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6c8g-7p36-r338" />
+  </ItemGroup>
 </Project>
