@@ -158,6 +158,13 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient("webhook", c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddSingleton<IWebhookDeliveryService, HttpWebhookDeliveryService>();
 
+        // #52 — NoSQL schema discoverer stubs (full implementations tracked in issues #53–#56)
+        services.AddSingleton<INoSqlSchemaDiscoverer, CosmosDbSchemaDiscoverer>();
+        services.AddSingleton<INoSqlSchemaDiscoverer, MongoDbSchemaDiscoverer>();
+        services.AddSingleton<INoSqlSchemaDiscoverer, DynamoDbSchemaDiscoverer>();
+        services.AddSingleton<INoSqlSchemaDiscoverer, FirestoreSchemaDiscoverer>();
+        services.AddSingleton<INoSqlSchemaDiscovererFactory, NoSqlSchemaDiscovererFactory>();
+
         return services;
     }
 }

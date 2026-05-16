@@ -472,3 +472,58 @@ public interface IWebhookRepository
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<WebhookDelivery> SaveDeliveryAsync(WebhookDelivery delivery, CancellationToken cancellationToken = default);
 }
+
+// ── #52: NoSQL / document-database provider ports ────────────────────────────
+
+/// <summary>
+/// Discovers the collection metadata (schema) of a document/NoSQL database.
+/// Analogous to <see cref="ISchemaProvider"/> for relational databases.
+/// </summary>
+public interface INoSqlSchemaDiscoverer
+{
+    /// <summary>Identifies the provider, e.g. "cosmosdb", "mongodb", "dynamodb", "firestore".</summary>
+    string ProviderName { get; }
+
+    /// <summary>
+    /// Returns canonical metadata for all discoverable collections in the target database.
+    /// Implementations must sample documents to infer field types; they must not return raw document content.
+    /// </summary>
+    Task<IReadOnlyList<CollectionMetadata>> DiscoverCollectionsAsync(
+        string connectionString,
+        string databaseName,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Profiles a document/NoSQL database by collecting aggregate-only statistics.
+/// No raw document content is read — only COUNT, DISTINCT, MIN, MAX aggregates.
+/// </summary>
+public interface INoSqlDataProfiler
+{
+    /// <summary>Identifies the provider, e.g. "cosmosdb", "mongodb", "dynamodb", "firestore".</summary>
+    string ProviderName { get; }
+
+    /// <summary>
+    /// Returns a <see cref="NoSqlProfileSnapshot"/> with per-collection and per-field statistics.
+    /// </summary>
+    Task<NoSqlProfileSnapshot> ProfileAsync(
+        IReadOnlyList<CollectionMetadata> collections,
+        string connectionString,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Resolves the appropriate <see cref="INoSqlSchemaDiscoverer"/> for a given provider name.
+/// </summary>
+public interface INoSqlSchemaDiscovererFactory
+{
+    INoSqlSchemaDiscoverer GetDiscoverer(string providerName);
+}
+
+/// <summary>
+/// Resolves the appropriate <see cref="INoSqlDataProfiler"/> for a given provider name.
+/// </summary>
+public interface INoSqlDataProfilerFactory
+{
+    INoSqlDataProfiler GetProfiler(string providerName);
+}
